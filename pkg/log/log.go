@@ -13,17 +13,27 @@ import (
 	"strings"
 )
 
+var Log *logger.Helper
+
 type Logger struct {
 	Driver  string            `json:"driver"`
 	Level   string            `json:"level"`
 	WriteTo []*logger.WriteTo `json:"writeTo"`
 }
 
-func NewLog(conf *viper.Viper) logger.Logger {
+func NewLogWithViper(conf *viper.Viper) logger.Logger {
 	var logConfig Logger
 	if err := conf.UnmarshalKey("Logger", &logConfig); err != nil {
 		log.Fatalf("Error unmarshaling logConfig: %v", err)
 	}
+	return initZap(
+		WithDriver(logConfig.Driver),
+		WithLevel(logConfig.Level),
+		WithWriteTo(logConfig.WriteTo),
+	)
+}
+
+func NewLog(logConfig *Logger) logger.Logger {
 	return initZap(
 		WithDriver(logConfig.Driver),
 		WithLevel(logConfig.Level),

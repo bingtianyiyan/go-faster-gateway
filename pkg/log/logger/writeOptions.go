@@ -3,8 +3,6 @@ package logger
 type WriteTo struct {
 	//file/console/others
 	Name string `json:"name"`
-	//log level
-	Level string `json:"level"`
 	//params
 	Args interface{} `json:"args"`
 }

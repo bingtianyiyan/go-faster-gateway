@@ -6,9 +6,12 @@ import (
 	"go-faster-gateway/pkg/log/logger"
 )
 
-var Log *logger.Helper
+func SetupLog(logConfig *log.Logger) {
+	log.NewLog(logConfig)
+	log.Log = logger.NewHelper(logger.DefaultLogger)
+}
 
 func Setup(conf *viper.Viper) {
-	log.NewLog(conf)
-	Log = logger.NewHelper(logger.DefaultLogger)
+	log.NewLogWithViper(conf)
+	log.Log = logger.NewHelper(logger.DefaultLogger)
 }

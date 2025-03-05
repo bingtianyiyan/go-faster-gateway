@@ -2,9 +2,9 @@ package handler
 
 import (
 	"github.com/gin-gonic/gin"
-	logger "go-faster-gateway/internal/pkg/componentInialize/logger"
 	"go-faster-gateway/internal/service"
 	"go-faster-gateway/pkg/helper/resp"
+	"go-faster-gateway/pkg/log"
 	"go.uber.org/zap"
 	"net/http"
 )
@@ -33,7 +33,7 @@ func (h *UserHandler) GetUserById(ctx *gin.Context) {
 	}
 
 	user, err := h.userService.GetUserById(params.Id)
-	logger.Log.Info("GetUserByID", zap.Any("user", user))
+	log.Log.Info("GetUserByID", zap.Any("user", user))
 	if err != nil {
 		resp.HandleError(ctx, http.StatusInternalServerError, 1, err.Error(), nil)
 		return

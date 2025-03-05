@@ -6,7 +6,6 @@ package wire
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
-	"github.com/spf13/viper"
 	"go-faster-gateway/internal/handler"
 	"go-faster-gateway/internal/repository"
 	"go-faster-gateway/internal/server"
@@ -31,7 +30,7 @@ var HandlerSet = wire.NewSet(
 	handler.NewUserHandler,
 )
 
-func NewWire(*viper.Viper) (*gin.Engine, func(), error) {
+func NewWire() (*gin.Engine, func(), error) {
 	panic(wire.Build(
 		ServerSet,
 		RepositorySet,

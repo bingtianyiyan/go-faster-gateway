@@ -13,12 +13,11 @@ import (
 	"go-faster-gateway/internal/server"
 	"go-faster-gateway/internal/service"
 	"github.com/google/wire"
-	"github.com/spf13/viper"
 )
 
 // Injectors from wire.go:
 
-func NewWire(viperViper *viper.Viper) (*gin.Engine, func(), error) {
+func NewWire() (*gin.Engine, func(), error) {
 	handlerHandler := handler.NewHandler()
 	serviceService := service.NewService()
 	db := repository.NewDb()
