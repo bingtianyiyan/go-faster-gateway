@@ -3,10 +3,11 @@ package safe
 import (
 	"context"
 	"fmt"
-	"github.com/cenkalti/backoff/v4"
 	"go-faster-gateway/pkg/log"
 	"runtime/debug"
 	"sync"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 type routineCtx func(ctx context.Context)

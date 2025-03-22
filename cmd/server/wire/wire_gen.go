@@ -7,11 +7,12 @@
 package wire
 
 import (
-	"github.com/gin-gonic/gin"
 	"go-faster-gateway/internal/handler"
 	"go-faster-gateway/internal/repository"
 	"go-faster-gateway/internal/server"
 	"go-faster-gateway/internal/service"
+
+	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 )
 

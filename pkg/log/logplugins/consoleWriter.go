@@ -1,8 +1,9 @@
 package plugins
 
 import (
-	"go.uber.org/zap/zapcore"
 	"os"
+
+	"go.uber.org/zap/zapcore"
 )
 
 func (k *ConsoleWriter) Write(p []byte) (n int, err error) {

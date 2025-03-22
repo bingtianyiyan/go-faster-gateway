@@ -2,6 +2,7 @@ package sid
 
 import (
 	"go-faster-gateway/pkg/helper/convert"
+
 	"github.com/pkg/errors"
 	"github.com/sony/sonyflake"
 )

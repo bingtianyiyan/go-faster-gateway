@@ -1,5 +1,0 @@
-[http.routers]
-{{ range $i, $e := until 20 }}
-  [http.routers.router{{ $e }}]
-  service = "application"  
-{{ end }}

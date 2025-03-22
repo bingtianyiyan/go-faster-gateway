@@ -1,7 +1,0 @@
-[http.routers]
-
-  [http.routers."router1"]
-    service = "application-1"
-
-  [http.routers."router2"]
-    service = "application-2"

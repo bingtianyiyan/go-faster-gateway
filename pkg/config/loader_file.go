@@ -27,8 +27,6 @@ func (f *FileLoader) Load(args []string, cmd *Command) (bool, error) {
 		return false, err
 	}
 
-	//处理根据环境变量
-	configFile = getConvertConfigFilePath(configFile)
 	f.filename = configFile
 
 	if configFile == "" {
@@ -50,6 +48,9 @@ func loadConfigFiles(configFile string, element interface{}) (string, error) {
 		Extensions: []string{"toml", "yaml", "yml"},
 	}
 
+	//处理根据环境变量获取文件名称
+	configFile = getConvertConfigFilePath(configFile)
+
 	filePath, err := finder.Find(configFile)
 	if err != nil {
 		return "", err
@@ -58,7 +59,7 @@ func loadConfigFiles(configFile string, element interface{}) (string, error) {
 	if len(filePath) == 0 {
 		return "", nil
 	}
-
+	//文件解析
 	if err := file.Decode(filePath, element); err != nil {
 		return "", err
 	}

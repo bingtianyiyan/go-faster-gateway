@@ -3,8 +3,9 @@ package file
 
 import (
 	"fmt"
-	"github.com/BurntSushi/toml"
 	"go-faster-gateway/pkg/helper/parser"
+
+	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 )
 

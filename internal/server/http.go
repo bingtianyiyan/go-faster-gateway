@@ -1,10 +1,11 @@
 package server
 
 import (
-	"github.com/gin-gonic/gin"
 	"go-faster-gateway/internal/handler"
 	"go-faster-gateway/internal/middleware"
 	"go-faster-gateway/pkg/helper/resp"
+
+	"github.com/gin-gonic/gin"
 )
 
 func NewServerHTTP(

@@ -3,10 +3,6 @@ package dynamic
 import (
 	"fmt"
 	"go-faster-gateway/pkg/ip"
-	"net/http"
-	"time"
-
-	ptypes "go-faster-gateway/pkg/types"
 )
 
 // ForwardAuthDefaultMaxBodySize is the ForwardAuth.MaxBodySize option default value.
@@ -20,15 +16,10 @@ type Middleware struct {
 
 	Chain *Chain `json:"chain,omitempty" toml:"chain,omitempty" yaml:"chain,omitempty" export:"true"`
 	// Deprecated: please use IPAllowList instead.
-	IPWhiteList    *IPWhiteList    `json:"ipWhiteList,omitempty" toml:"ipWhiteList,omitempty" yaml:"ipWhiteList,omitempty" export:"true"`
-	IPAllowList    *IPAllowList    `json:"ipAllowList,omitempty" toml:"ipAllowList,omitempty" yaml:"ipAllowList,omitempty" export:"true"`
-	RateLimit      *RateLimit      `json:"rateLimit,omitempty" toml:"rateLimit,omitempty" yaml:"rateLimit,omitempty" export:"true"`
-	BasicAuth      *BasicAuth      `json:"basicAuth,omitempty" toml:"basicAuth,omitempty" yaml:"basicAuth,omitempty" export:"true"`
-	Buffering      *Buffering      `json:"buffering,omitempty" toml:"buffering,omitempty" yaml:"buffering,omitempty" export:"true"`
-	CircuitBreaker *CircuitBreaker `json:"circuitBreaker,omitempty" toml:"circuitBreaker,omitempty" yaml:"circuitBreaker,omitempty" export:"true"`
-	Retry          *Retry          `json:"retry,omitempty" toml:"retry,omitempty" yaml:"retry,omitempty" export:"true"`
-	ContentType    *ContentType    `json:"contentType,omitempty" toml:"contentType,omitempty" yaml:"contentType,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
-	GrpcWeb        *GrpcWeb        `json:"grpcWeb,omitempty" toml:"grpcWeb,omitempty" yaml:"grpcWeb,omitempty" export:"true"`
+	IPWhiteList *IPWhiteList `json:"ipWhiteList,omitempty" toml:"ipWhiteList,omitempty" yaml:"ipWhiteList,omitempty" export:"true"`
+	IPAllowList *IPAllowList `json:"ipAllowList,omitempty" toml:"ipAllowList,omitempty" yaml:"ipAllowList,omitempty" export:"true"`
+	BasicAuth   *BasicAuth   `json:"basicAuth,omitempty" toml:"basicAuth,omitempty" yaml:"basicAuth,omitempty" export:"true"`
+	Buffering   *Buffering   `json:"buffering,omitempty" toml:"buffering,omitempty" yaml:"buffering,omitempty" export:"true"`
 	// Gateway API filter middlewares.
 	RequestHeaderModifier  *HeaderModifier `json:"requestHeaderModifier,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	ResponseHeaderModifier *HeaderModifier `json:"responseHeaderModifier,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
@@ -38,29 +29,6 @@ type Middleware struct {
 	Compress *Compress `json:"compress,omitempty" toml:"compress,omitempty" yaml:"compress,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 }
 
-// +k8s:deepcopy-gen=true
-
-// GrpcWeb holds the gRPC web middleware configuration.
-// This middleware converts a gRPC web request to an HTTP/2 gRPC request.
-type GrpcWeb struct {
-	// AllowOrigins is a list of allowable origins.
-	// Can also be a wildcard origin "*".
-	AllowOrigins []string `json:"allowOrigins,omitempty" toml:"allowOrigins,omitempty" yaml:"allowOrigins,omitempty"`
-}
-
-// +k8s:deepcopy-gen=true
-
-// ContentType holds the content-type middleware configuration.
-// This middleware exists to enable the correct behavior until at least the default one can be changed in a future version.
-type ContentType struct {
-	// AutoDetect specifies whether to let the `Content-Type` header, if it has not been set by the backend,
-	// be automatically set to a value derived from the contents of the response.
-	// Deprecated: AutoDetect option is deprecated, Content-Type middleware is only meant to be used to enable the content-type detection, please remove any usage of this option.
-	AutoDetect *bool `json:"autoDetect,omitempty" toml:"autoDetect,omitempty" yaml:"autoDetect,omitempty" export:"true"`
-}
-
-// +k8s:deepcopy-gen=true
-
 // AddPrefix holds the add prefix middleware configuration.
 // This middleware updates the path of a request before forwarding it.
 // More info: https://doc.traefik.io/traefik/v3.3/middlewares/http/addprefix/
@@ -69,8 +37,6 @@ type AddPrefix struct {
 	// It should include a leading slash (/).
 	Prefix string `json:"prefix,omitempty" toml:"prefix,omitempty" yaml:"prefix,omitempty" export:"true"`
 }
-
-// +k8s:deepcopy-gen=true
 
 // BasicAuth holds the basic auth middleware configuration.
 // This middleware restricts access to your services to known users.
@@ -92,8 +58,6 @@ type BasicAuth struct {
 	// More info: https://doc.traefik.io/traefik/v3.3/middlewares/http/basicauth/#headerfield
 	HeaderField string `json:"headerField,omitempty" toml:"headerField,omitempty" yaml:"headerField,omitempty" export:"true"`
 }
-
-// +k8s:deepcopy-gen=true
 
 // Buffering holds the buffering middleware configuration.
 // This middleware retries or limits the size of requests that can be forwarded to backends.
@@ -119,39 +83,11 @@ type Buffering struct {
 	RetryExpression string `json:"retryExpression,omitempty" toml:"retryExpression,omitempty" yaml:"retryExpression,omitempty" export:"true"`
 }
 
-// +k8s:deepcopy-gen=true
-
 // Chain holds the chain middleware configuration.
 // This middleware enables to define reusable combinations of other pieces of middleware.
 type Chain struct {
 	// Middlewares is the list of middleware names which composes the chain.
 	Middlewares []string `json:"middlewares,omitempty" toml:"middlewares,omitempty" yaml:"middlewares,omitempty" export:"true"`
-}
-
-// +k8s:deepcopy-gen=true
-
-// CircuitBreaker holds the circuit breaker middleware configuration.
-// This middleware protects the system from stacking requests to unhealthy services, resulting in cascading failures.
-// More info: https://doc.traefik.io/traefik/v3.3/middlewares/http/circuitbreaker/
-type CircuitBreaker struct {
-	// Expression defines the expression that, once matched, opens the circuit breaker and applies the fallback mechanism instead of calling the services.
-	Expression string `json:"expression,omitempty" toml:"expression,omitempty" yaml:"expression,omitempty" export:"true"`
-	// CheckPeriod is the interval between successive checks of the circuit breaker condition (when in standby state).
-	CheckPeriod ptypes.Duration `json:"checkPeriod,omitempty" toml:"checkPeriod,omitempty" yaml:"checkPeriod,omitempty" export:"true"`
-	// FallbackDuration is the duration for which the circuit breaker will wait before trying to recover (from a tripped state).
-	FallbackDuration ptypes.Duration `json:"fallbackDuration,omitempty" toml:"fallbackDuration,omitempty" yaml:"fallbackDuration,omitempty" export:"true"`
-	// RecoveryDuration is the duration for which the circuit breaker will try to recover (as soon as it is in recovering state).
-	RecoveryDuration ptypes.Duration `json:"recoveryDuration,omitempty" toml:"recoveryDuration,omitempty" yaml:"recoveryDuration,omitempty" export:"true"`
-	// ResponseCode is the status code that the circuit breaker will return while it is in the open state.
-	ResponseCode int `json:"responseCode,omitempty" toml:"responseCode,omitempty" yaml:"responseCode,omitempty" export:"true"`
-}
-
-// SetDefaults sets the default values on a RateLimit.
-func (c *CircuitBreaker) SetDefaults() {
-	c.CheckPeriod = ptypes.Duration(100 * time.Millisecond)
-	c.FallbackDuration = ptypes.Duration(10 * time.Second)
-	c.RecoveryDuration = ptypes.Duration(10 * time.Second)
-	c.ResponseCode = http.StatusServiceUnavailable
 }
 
 // IPStrategy holds the IP strategy configuration used by Traefik to determine the client IP.
@@ -242,49 +178,6 @@ type SourceCriterion struct {
 	RequestHost bool `json:"requestHost,omitempty" toml:"requestHost,omitempty" yaml:"requestHost,omitempty" export:"true"`
 }
 
-// +k8s:deepcopy-gen=true
-
-// RateLimit holds the rate limit configuration.
-// This middleware ensures that services will receive a fair amount of requests, and allows one to define what fair is.
-type RateLimit struct {
-	// Average is the maximum rate, by default in requests/s, allowed for the given source.
-	// It defaults to 0, which means no rate limiting.
-	// The rate is actually defined by dividing Average by Period. So for a rate below 1req/s,
-	// one needs to define a Period larger than a second.
-	Average int64 `json:"average,omitempty" toml:"average,omitempty" yaml:"average,omitempty" export:"true"`
-
-	// Period, in combination with Average, defines the actual maximum rate, such as:
-	// r = Average / Period. It defaults to a second.
-	Period ptypes.Duration `json:"period,omitempty" toml:"period,omitempty" yaml:"period,omitempty" export:"true"`
-
-	// Burst is the maximum number of requests allowed to arrive in the same arbitrarily small period of time.
-	// It defaults to 1.
-	Burst int64 `json:"burst,omitempty" toml:"burst,omitempty" yaml:"burst,omitempty" export:"true"`
-
-	// SourceCriterion defines what criterion is used to group requests as originating from a common source.
-	// If several strategies are defined at the same time, an error will be raised.
-	// If none are set, the default is to use the request's remote address field (as an ipStrategy).
-	SourceCriterion *SourceCriterion `json:"sourceCriterion,omitempty" toml:"sourceCriterion,omitempty" yaml:"sourceCriterion,omitempty" export:"true"`
-}
-
-// SetDefaults sets the default values on a RateLimit.
-func (r *RateLimit) SetDefaults() {
-	r.Burst = 1
-	r.Period = ptypes.Duration(time.Second)
-}
-
-// ClientTLS holds TLS specific configurations as client
-// CA, Cert and Key can be either path or file contents.
-// TODO: remove this struct when CAOptional option will be removed.
-type ClientTLS struct {
-	CA                 string `description:"TLS CA" json:"ca,omitempty" toml:"ca,omitempty" yaml:"ca,omitempty"`
-	Cert               string `description:"TLS cert" json:"cert,omitempty" toml:"cert,omitempty" yaml:"cert,omitempty"`
-	Key                string `description:"TLS key" json:"key,omitempty" toml:"key,omitempty" yaml:"key,omitempty" loggable:"false"`
-	InsecureSkipVerify bool   `description:"TLS insecure skip verify" json:"insecureSkipVerify,omitempty" toml:"insecureSkipVerify,omitempty" yaml:"insecureSkipVerify,omitempty" export:"true"`
-	// Deprecated: TLS client authentication is a server side option (see https://github.com/golang/go/blob/740a490f71d026bb7d2d13cb8fa2d6d6e0572b70/src/crypto/tls/common.go#L634).
-	CAOptional *bool `description:"TLS CA.Optional" json:"caOptional,omitempty" toml:"caOptional,omitempty" yaml:"caOptional,omitempty" export:"true"`
-}
-
 // Compress holds the compress middleware configuration.
 // This middleware compresses responses before sending them to the client, using gzip, brotli, or zstd compression.
 type Compress struct {
@@ -305,25 +198,6 @@ type Compress struct {
 func (c *Compress) SetDefaults() {
 	c.Encodings = []string{"zstd", "br", "gzip"}
 }
-
-// +k8s:deepcopy-gen=true
-
-// Retry holds the retry middleware configuration.
-// This middleware reissues requests a given number of times to a backend server if that server does not reply.
-// As soon as the server answers, the middleware stops retrying, regardless of the response status.
-// More info: https://doc.traefik.io/traefik/v3.3/middlewares/http/retry/
-type Retry struct {
-	// Attempts defines how many times the request should be retried.
-	Attempts int `json:"attempts,omitempty" toml:"attempts,omitempty" yaml:"attempts,omitempty" export:"true"`
-	// InitialInterval defines the first wait time in the exponential backoff series.
-	// The maximum interval is calculated as twice the initialInterval.
-	// If unspecified, requests will be retried immediately.
-	// The value of initialInterval should be provided in seconds or as a valid duration format,
-	// see https://pkg.go.dev/time#ParseDuration.
-	InitialInterval ptypes.Duration `json:"initialInterval,omitempty" toml:"initialInterval,omitempty" yaml:"initialInterval,omitempty" export:"true"`
-}
-
-// +k8s:deepcopy-gen=true
 
 // StripPrefix holds the strip prefix middleware configuration.
 // This middleware removes the specified prefixes from the URL path.

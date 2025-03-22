@@ -2,9 +2,10 @@ package zap
 
 import (
 	"go-faster-gateway/pkg/log/logger"
+	"io"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"io"
 )
 
 type Options struct {

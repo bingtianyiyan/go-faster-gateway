@@ -3,7 +3,6 @@ package parser
 import (
 	"errors"
 	"fmt"
-	"go-faster-gateway/pkg/types"
 	"math"
 	"reflect"
 	"strconv"
@@ -330,7 +329,7 @@ func (f filler) setMap(field reflect.Value, node *Node) error {
 
 func setInt(field reflect.Value, value string, bitSize int) error {
 	switch field.Type() {
-	case reflect.TypeOf(types.Duration(0)):
+	case reflect.TypeOf(Duration(0)):
 		return setDuration(field, value, bitSize, time.Second)
 	case reflect.TypeOf(time.Duration(0)):
 		return setDuration(field, value, bitSize, time.Nanosecond)

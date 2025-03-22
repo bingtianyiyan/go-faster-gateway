@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"go-faster-gateway/pkg/log/logger"
+
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 )

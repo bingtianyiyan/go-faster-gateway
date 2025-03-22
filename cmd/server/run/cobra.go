@@ -2,9 +2,10 @@ package run
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"go-faster-gateway/cmd/server/api"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{

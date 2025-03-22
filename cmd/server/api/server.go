@@ -1,15 +1,30 @@
 package api
 
 import (
+	"context"
 	"fmt"
+	"go-faster-gateway/pkg/log/logger"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go-faster-gateway/cmd/server/wire"
-	logger_init "go-faster-gateway/internal/pkg/componentInialize/logger"
+
+	//"go-faster-gateway/cmd/server/wire"
+	db_init "go-faster-gateway/internal/pkg/componentSetup/database"
+	logger_init "go-faster-gateway/internal/pkg/componentSetup/logger"
+	"go-faster-gateway/internal/pkg/router"
+	"go-faster-gateway/internal/server"
 	configLoader "go-faster-gateway/pkg/config"
+	"go-faster-gateway/pkg/config/dynamic"
 	"go-faster-gateway/pkg/config/static"
-	"go-faster-gateway/pkg/http"
+
+	//"go-faster-gateway/pkg/http"
 	"go-faster-gateway/pkg/log"
+	"go-faster-gateway/pkg/provider/aggregator"
+	"go-faster-gateway/pkg/safe"
 )
 
 var (
@@ -32,8 +47,6 @@ var (
 
 func init() {
 	StartCmd.PersistentFlags().StringVarP(&envConf, "config", "c", "config/settings.yml", "Start server with provided configuration file")
-	//flag.StringVar(&envConf, "conf", "settings.yml", "config path, eg: -conf config/settings.yml")
-	//flag.Parse()
 }
 
 func setup() {
@@ -42,7 +55,7 @@ func setup() {
 
 func run() error {
 	//config inits
-	gatewayConfig := NewGatewayConfiguration()
+	gatewayConfig := configLoader.NewGatewayConfiguration()
 	gatewayConfig.ConfigFile = envConf
 	loaders := []configLoader.ResourceLoader{&configLoader.FileLoader{}}
 	cmdGateway := &configLoader.Command{
@@ -67,63 +80,74 @@ func run() error {
 }
 
 func runCmd(staticConfiguration *static.Configuration) error {
-	//配置文件读取
-	//conf = config.NewConfig(envConf)
 	//日志初始化
 	logger_init.SetupLog(staticConfiguration.Logger)
-	//wire ioc
-	app, cleanup, err := wire.NewWire()
-	if err != nil {
-		log.Log.Error("register wire fail", err)
-		panic(err)
+	////wire ioc
+	//app, cleanup, err := wire.NewWire()
+	//if err != nil {
+	//	log.Log.Error("register wire fail", err)
+	//	panic(err)
+	//}
+	//defer cleanup()
+
+	//Provider 机制是其架构体系中的一个核心概念和独特之处，它允许与各种云原生平台、服务发现工具等进行集成和交互
+	providerAggregator := aggregator.NewProviderAggregator(*staticConfiguration.Providers)
+	ctx := logger.NewContext(context.Background(), log.Log)
+	routinesPool := safe.NewPool(ctx)
+	//这边可以加入其他文件提供者
+
+	//db
+	db_init.SetupDb(staticConfiguration.Databases)
+
+	// Watcher
+
+	watcher := configLoader.NewConfigurationWatcher(
+		routinesPool,
+		providerAggregator,
+		"internal",
+	)
+
+	//1.构建route和route对应的中间件相关组件做关联对应
+	routeManger := router.NewRouterManager()
+	//2.
+	// Switch router  构建tcp和udp路由
+	watcher.AddListener(switchRouter(ctx, routeManger))
+
+	svr := server.NewServer(server.WithConfiguration(staticConfiguration),
+		server.WithRoutePool(routinesPool),
+		server.WithWatch(watcher),
+		server.WithSignals(make(chan os.Signal, 1)),
+		server.WithStopChan(make(chan bool, 1)))
+	ctx, _ = signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
+	//服务入口接收请求
+	svr.Start(ctx)
+	defer svr.Close()
+
+	sent, err := daemon.SdNotify(false, "READY=1")
+	if !sent && err != nil {
+		log.Log.WithError(err).Error("Failed to notify")
 	}
-	defer cleanup()
 
-	http.Run(app, fmt.Sprintf(":%d", conf.GetInt("http.port")))
+	//t, err := daemon.SdWatchdogEnabled(false)
+	//if err != nil {
+	//	log.Log.WithError(err).Error("Could not enable Watchdog")
+	//}
 
-	//srv := &http.Server{
-	//	Addr:    fmt.Sprintf("%s:%d", config.Application.Host, config.Application.Port),
-	//	Handler: sm(sdk.Runtime.GetEngine()),
-	//}
-	//
-	//go func() {
-	//	var dbs = make(map[string]*gorm.DB, 0)
-	//	for k, v := range sdk.Runtime.GetDb() {
-	//		if k == global.JobDb {
-	//			dbs[k] = v
-	//		}
-	//	}
-	//	if (len(dbs)) > 0 {
-	//		jobs.Setup(dbs)
-	//	}
-	//}()
-	//
-	//go func() {
-	//	// 服务连接
-	//	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-	//		logger.Logger.Fatal("listen err:", zap.Error(err))
-	//	}
-	//}()
-	//
-	//fmt.Println("Server run at:")
-	//fmt.Printf("-  Local:   http://localhost:%d/ \r\n", config.Application.Port)
-	//fmt.Printf("-  Network: http://%s:%d/ \r\n", utils.GetLocaHonst(), config.Application.Port)
-	//fmt.Println("Swagger run at:")
-	//fmt.Printf("-  Local:   http://localhost:%d/swagger/index.html \r\n", config.Application.Port)
-	//fmt.Printf("-  Network: http://%s:%d/swagger/index.html \r\n", utils.GetLocaHonst(), config.Application.Port)
-	//fmt.Printf("%s Enter Control + C Shutdown Server \r\n", utils.GetCurrentTimeStr())
-	//// 等待中断信号以优雅地关闭服务器（设置 5 秒的超时时间）
-	//quit := make(chan os.Signal)
-	//signal.Notify(quit, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	//<-quit
-	//
-	//ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	//defer cancel()
-	//fmt.Printf("%s Shutdown Server ... \r\n", utils.GetCurrentTimeStr())
-	//
-	//if err := srv.Shutdown(ctx); err != nil {
-	//	logger.Logger.Fatal("Server Shutdown:", zap.Error(err))
-	//}
-	//logger.Logger.Warn("Server exiting")
+	svr.Wait()
+	log.Log.Info("Shutting down")
+
+	//http.Run(app, fmt.Sprintf(":%d", conf.GetInt("http.port")))
+
 	return err
+}
+
+func switchRouter(ctx context.Context, routerFactory *router.RouterManager) func(conf dynamic.Configuration) {
+	return func(conf dynamic.Configuration) {
+		fmt.Println("switch router")
+		// http对应的路由信息
+		routerFactory.CreateRouters(ctx, conf)
+		fmt.Println(conf.BalanceMode.Balance)
+		fmt.Println("finish print")
+	}
 }

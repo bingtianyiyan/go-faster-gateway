@@ -1,16 +1,17 @@
 package log
 
 import (
-	"github.com/mitchellh/mapstructure"
-	"github.com/spf13/viper"
 	"go-faster-gateway/pkg/log/logger"
 	plugins "go-faster-gateway/pkg/log/logplugins"
 	plugins_zap "go-faster-gateway/pkg/log/logplugins/zap"
-	"go.uber.org/zap/zapcore"
 	"io"
 	"log"
 	"os"
 	"strings"
+
+	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/viper"
+	"go.uber.org/zap/zapcore"
 )
 
 var Log *logger.Helper
