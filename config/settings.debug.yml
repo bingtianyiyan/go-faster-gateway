@@ -2,7 +2,6 @@ providers:
   file:
     watch: false
     filename: config/gateway-dynamic.yml
-    debugLogGeneratedTemplate: true
 
 entryPoint:
   address: 127.0.0.1

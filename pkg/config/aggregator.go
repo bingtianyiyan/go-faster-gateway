@@ -23,5 +23,3 @@ func mergeConfiguration(configurations dynamic.Configurations) dynamic.Configura
 	}
 	return conf
 }
-
-func pointer[T any](v T) *T { return &v }

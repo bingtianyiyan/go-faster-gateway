@@ -61,8 +61,7 @@ func maybeThrottledProvide(prd provider.Provider, defaultDuration time.Duration)
 
 // ProviderAggregator aggregates providers.
 type ProviderAggregator struct {
-	//内置的提供器
-	internalProvider          provider.Provider
+	//程序默认以文件方式获取配置信息
 	fileProvider              provider.Provider
 	providers                 []provider.Provider
 	providersThrottleDuration time.Duration
@@ -78,7 +77,7 @@ func NewProviderAggregator(conf static.Providers) *ProviderAggregator {
 		p.quietAddProvider(conf.File)
 	}
 
-	//其他文件提供再这边写
+	//如果有其他类型提供配置文件，比如nacos,apollo等
 
 	return p
 }
@@ -100,8 +99,6 @@ func (p *ProviderAggregator) AddProvider(provider provider.Provider) error {
 	switch provider.(type) {
 	case *file.Provider:
 		p.fileProvider = provider
-	//case *traefik.Provider:
-	//	p.internalProvider = provider
 	default:
 		p.providers = append(p.providers, provider)
 	}
@@ -124,12 +121,6 @@ func (p *ProviderAggregator) Provide(configurationChan chan<- dynamic.Message, p
 		safe.Go(func() {
 			p.launchProvider(configurationChan, pool, prd)
 		})
-	}
-
-	// internal provider must be the last because we use it to know if all the providers are loaded.
-	// ConfigurationWatcher will wait for this requiredProvider before applying configurations.
-	if p.internalProvider != nil {
-		p.launchProvider(configurationChan, pool, p.internalProvider)
 	}
 
 	return nil

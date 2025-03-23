@@ -10,8 +10,6 @@ import (
 
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-
 	//"go-faster-gateway/cmd/server/wire"
 	db_init "go-faster-gateway/internal/pkg/componentSetup/database"
 	logger_init "go-faster-gateway/internal/pkg/componentSetup/logger"
@@ -28,10 +26,10 @@ import (
 )
 
 var (
-	envConf string
-	conf    *viper.Viper
-
-	StartCmd = &cobra.Command{
+	err           error
+	defaultConfig string
+	staticConfig  *static.Configuration
+	StartCmd      = &cobra.Command{
 		Use:          "server",
 		Short:        "Start faster-gateway server",
 		Example:      "faster-gateway server -c config/settings.yaml",
@@ -46,42 +44,24 @@ var (
 )
 
 func init() {
-	StartCmd.PersistentFlags().StringVarP(&envConf, "config", "c", "config/settings.yml", "Start server with provided configuration file")
+	StartCmd.PersistentFlags().StringVarP(&defaultConfig, "config", "c", "config/settings.yml", "Start server with provided configuration file")
 }
 
 func setup() {
-	fmt.Println(`starting faster-gateway server...`)
+	fmt.Println(`starting faster-gateway server...,load static config and init log`)
+	//static config inits
+	staticConfig, err = static.NewStaticConfig(defaultConfig)
+	if err != nil {
+		fmt.Printf("init preRun fail %s", err.Error())
+		log.Exit(1)
+	} else {
+		//日志初始化
+		logger_init.SetupLog(staticConfig.Logger)
+	}
+	fmt.Println("init preRun success")
 }
 
 func run() error {
-	//config inits
-	gatewayConfig := configLoader.NewGatewayConfiguration()
-	gatewayConfig.ConfigFile = envConf
-	loaders := []configLoader.ResourceLoader{&configLoader.FileLoader{}}
-	cmdGateway := &configLoader.Command{
-		Name:          "faster-gateway",
-		Description:   `HTTP reverse proxy and load balancer`,
-		Configuration: gatewayConfig,
-		Resources:     loaders,
-		Run: func(_ []string) error {
-			return runCmd(&gatewayConfig.Configuration)
-		},
-	}
-
-	//healthcheck check  TODO
-
-	err := configLoader.Execute(cmdGateway)
-	if err != nil {
-		log.Log.WithError(err).Error("command error")
-		log.Exit(1)
-	}
-	log.Exit(0)
-	return err
-}
-
-func runCmd(staticConfiguration *static.Configuration) error {
-	//日志初始化
-	logger_init.SetupLog(staticConfiguration.Logger)
 	////wire ioc
 	//app, cleanup, err := wire.NewWire()
 	//if err != nil {
@@ -91,13 +71,13 @@ func runCmd(staticConfiguration *static.Configuration) error {
 	//defer cleanup()
 
 	//Provider 机制是其架构体系中的一个核心概念和独特之处，它允许与各种云原生平台、服务发现工具等进行集成和交互
-	providerAggregator := aggregator.NewProviderAggregator(*staticConfiguration.Providers)
+	providerAggregator := aggregator.NewProviderAggregator(*staticConfig.Providers)
 	ctx := logger.NewContext(context.Background(), log.Log)
 	routinesPool := safe.NewPool(ctx)
 	//这边可以加入其他文件提供者
 
 	//db
-	db_init.SetupDb(staticConfiguration.Databases)
+	db_init.SetupDb(staticConfig.Databases)
 
 	// Watcher
 
@@ -113,7 +93,7 @@ func runCmd(staticConfiguration *static.Configuration) error {
 	// Switch router  构建tcp和udp路由
 	watcher.AddListener(switchRouter(ctx, routeManger))
 
-	svr := server.NewServer(server.WithConfiguration(staticConfiguration),
+	svr := server.NewServer(server.WithConfiguration(staticConfig),
 		server.WithRoutePool(routinesPool),
 		server.WithWatch(watcher),
 		server.WithSignals(make(chan os.Signal, 1)),
@@ -139,6 +119,8 @@ func runCmd(staticConfiguration *static.Configuration) error {
 
 	//http.Run(app, fmt.Sprintf(":%d", conf.GetInt("http.port")))
 
+	return err
+	log.Exit(0)
 	return err
 }
 

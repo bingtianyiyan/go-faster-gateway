@@ -1,26 +1,20 @@
 package file
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"go-faster-gateway/pkg/config/dynamic"
-	"go-faster-gateway/pkg/helper/file"
+	"go-faster-gateway/pkg/helper/utils"
 	"go-faster-gateway/pkg/log"
-	"go-faster-gateway/pkg/log/logger"
 	"go-faster-gateway/pkg/provider"
 	"go-faster-gateway/pkg/safe"
+	"go.uber.org/zap"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
-	"text/template"
 
-	"go.uber.org/zap"
-
-	"github.com/Masterminds/sprig/v3"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -30,9 +24,8 @@ var _ provider.Provider = (*Provider)(nil)
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Watch                     bool   `description:"Watch provider." json:"watch,omitempty" toml:"watch,omitempty" yaml:"watch,omitempty" export:"true"`
-	Filename                  string `description:"Load dynamic configuration from a file." json:"filename,omitempty" toml:"filename,omitempty" yaml:"filename,omitempty" export:"true"`
-	DebugLogGeneratedTemplate bool   `description:"Enable debug logging of generated configuration template." json:"debugLogGeneratedTemplate,omitempty" toml:"debugLogGeneratedTemplate,omitempty" yaml:"debugLogGeneratedTemplate,omitempty" export:"true"`
+	Watch    bool   `description:"Watch provider." json:"watch,omitempty" toml:"watch,omitempty" yaml:"watch,omitempty" export:"true"`
+	Filename string `description:"Load dynamic configuration from a file." json:"filename,omitempty" toml:"filename,omitempty" yaml:"filename,omitempty" export:"true"`
 }
 
 // SetDefaults sets the default values.
@@ -147,9 +140,6 @@ func (p *Provider) applyConfiguration(configurationChan chan<- dynamic.Message) 
 	if err != nil {
 		return err
 	}
-	//jsonData, _ := json.Marshal(configuration.HTTP.Services)
-	//fmt.Println(string(jsonData))
-	//fmt.Println("applyConfiguration")
 	sendConfigToChannel(configurationChan, configuration)
 	return nil
 }
@@ -158,9 +148,8 @@ func (p *Provider) applyConfiguration(configurationChan chan<- dynamic.Message) 
 // specified by 'Filename' and returns a 'Configuration' object.
 func (p *Provider) buildConfiguration() (*dynamic.Configuration, error) {
 	if len(p.Filename) > 0 {
-		return p.loadFileConfig(p.Filename, true)
+		return p.loadFileConfig(p.Filename)
 	}
-
 	return nil, errors.New("error using file configuration provider, neither filename is not defined")
 }
 
@@ -171,106 +160,12 @@ func sendConfigToChannel(configurationChan chan<- dynamic.Message, configuration
 	}
 }
 
-func (p *Provider) loadFileConfig(filename string, parseTemplate bool) (*dynamic.Configuration, error) {
-	var err error
-	var configuration *dynamic.Configuration
-
-	finder := file.Finder{
-		BasePaths:  []string{"$XDG_CONFIG_HOME/go-faster-gateway", "$HOME/.config/go-faster-gateway", "./go-faster-gateway"},
-		Extensions: []string{"toml", "yaml", "yml"},
-	}
-
-	filename, err = finder.Find(filename)
-	if err != nil {
-		return nil, err
-	}
-	if len(filename) == 0 {
-		return nil, errors.New("could not find dynamic file")
-	}
-
-	var slog = log.Log.WithFields(map[string]interface{}{log.ProviderName: providerName})
-	ctx := logger.NewContext(context.Background(), slog)
-
-	if parseTemplate {
-		configuration, err = p.CreateConfiguration(ctx, filename, template.FuncMap{}, false)
-	} else {
-		configuration, err = p.DecodeConfiguration(filename)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return configuration, nil
-}
-
-// CreateConfiguration creates a provider configuration from content using templating.
-func (p *Provider) CreateConfiguration(ctx context.Context, filename string, funcMap template.FuncMap, templateObjects interface{}) (*dynamic.Configuration, error) {
-	tmplContent, err := readFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("error reading configuration file: %s - %w", filename, err)
-	}
-
-	defaultFuncMap := sprig.TxtFuncMap()
-	defaultFuncMap["normalize"] = provider.Normalize
-	defaultFuncMap["split"] = strings.Split
-	for funcID, funcElement := range funcMap {
-		defaultFuncMap[funcID] = funcElement
-	}
-
-	tmpl := template.New(p.Filename).Funcs(defaultFuncMap)
-
-	_, err = tmpl.Parse(tmplContent)
-	if err != nil {
-		return nil, err
-	}
-
-	var buffer bytes.Buffer
-	err = tmpl.Execute(&buffer, templateObjects)
-	if err != nil {
-		return nil, err
-	}
-
-	renderedTemplate := buffer.String()
-	if p.DebugLogGeneratedTemplate {
-		slog, _ := logger.FromContext(ctx)
-		slog.Debugf("Template content: %s", tmplContent)
-		slog.Debugf("Rendering results: %s", renderedTemplate)
-	}
-
-	return p.decodeConfiguration(filename, renderedTemplate)
-}
-
-// DecodeConfiguration Decodes a *types.Configuration from a content.
-func (p *Provider) DecodeConfiguration(filename string) (*dynamic.Configuration, error) {
-	content, err := readFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("error reading configuration file: %s - %w", filename, err)
-	}
-
-	return p.decodeConfiguration(filename, content)
-}
-
-func (p *Provider) decodeConfiguration(filePath, content string) (*dynamic.Configuration, error) {
-	configuration := &dynamic.Configuration{
+func (p *Provider) loadFileConfig(filename string) (*dynamic.Configuration, error) {
+	c := &dynamic.Configuration{
 		HTTP: &dynamic.HTTPConfiguration{
 			Services: make(map[string]*dynamic.Service),
 		},
 	}
-
-	err := file.DecodeContent(content, strings.ToLower(filepath.Ext(filePath)), configuration)
-	if err != nil {
-		return nil, err
-	}
-
-	return configuration, nil
-}
-
-func readFile(filename string) (string, error) {
-	if len(filename) > 0 {
-		buf, err := os.ReadFile(filename)
-		if err != nil {
-			return "", err
-		}
-		return string(buf), nil
-	}
-	return "", fmt.Errorf("invalid filename: %s", filename)
+	err := utils.GetFile(filename, c)
+	return c, err
 }
