@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -22,10 +21,12 @@ type Logger struct {
 	WriteTo []*logger.WriteTo `json:"writeTo"`
 }
 
-func NewLogWithViper(conf *viper.Viper) logger.Logger {
-	var logConfig Logger
-	if err := conf.UnmarshalKey("Logger", &logConfig); err != nil {
-		log.Fatalf("Error unmarshaling logConfig: %v", err)
+func NewDefaultLog() logger.Logger {
+	op := setDefault()
+	var logConfig = Logger{
+		Driver:  op.driver,
+		Level:   op.level,
+		WriteTo: op.writeTo,
 	}
 	return initZap(
 		WithDriver(logConfig.Driver),

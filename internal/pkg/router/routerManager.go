@@ -53,10 +53,15 @@ func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configur
 	r.BuildRouter(routeDataList, f.MiddlewareHandler)
 	f.Router = r
 	handler := r.Router.Handler
-	globalMiddlewares := f.Config.GlobalMiddleware
-	for i := len(globalMiddlewares) - 1; i >= 0; i-- {
-		key := strings.ToLower(globalMiddlewares[i])
-		handler = f.MiddlewareHandler.Handler[key](handler)
+	if len(f.MiddlewareHandler.Handler) > 0 {
+		globalMiddlewares := f.Config.GlobalMiddleware
+		for i := len(globalMiddlewares) - 1; i >= 0; i-- {
+			key := strings.ToLower(globalMiddlewares[i])
+			fc, ok := f.MiddlewareHandler.Handler[key]
+			if ok {
+				handler = fc(handler)
+			}
+		}
 	}
 	f.Handler = handler
 	return nil

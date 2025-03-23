@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"github.com/jinzhu/copier"
 	"go-faster-gateway/pkg/config/dynamic"
 	"go-faster-gateway/pkg/log"
 	logger2 "go-faster-gateway/pkg/log/logger"
@@ -92,7 +93,7 @@ func (c *ConfigurationWatcher) receiveConfigurations(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		// DeepCopy is necessary because newConfigurations gets modified later by the consumer of c.newConfigs
-		case output <- newConfigurations.DeepCopy():
+		case output <- *copyConfigurationData(new(dynamic.Configurations), &newConfigurations):
 			output = nil
 
 		default:
@@ -118,19 +119,22 @@ func (c *ConfigurationWatcher) receiveConfigurations(ctx context.Context) {
 				}
 
 				logConfiguration(slog, configMsg)
-
-				if reflect.DeepEqual(newConfigurations[configMsg.ProviderName], configMsg.Configuration) {
-					// no change, do nothing
-					slog.Debug("Skipping unchanged configuration")
-					continue
+				//	dynamic.Configuration
+				dyConfig, ok := newConfigurations[configMsg.ProviderName]
+				if ok {
+					if reflect.DeepEqual(dyConfig, configMsg.Configuration) {
+						// no change, do nothing
+						slog.Debug("Skipping unchanged configuration")
+						continue
+					}
+					newConfigurations[configMsg.ProviderName], _ = copyConfiguration(dyConfig, configMsg.Configuration)
+				} else {
+					newConfigurations[configMsg.ProviderName], _ = copyConfiguration(new(dynamic.Configuration), configMsg.Configuration)
 				}
-
-				newConfigurations[configMsg.ProviderName] = configMsg.Configuration.DeepCopy()
-
 				output = c.newConfigs
 
 			// DeepCopy is necessary because newConfigurations gets modified later by the consumer of c.newConfigs
-			case output <- newConfigurations.DeepCopy():
+			case output <- *copyConfigurationData(new(dynamic.Configurations), &newConfigurations):
 				output = nil
 			}
 		}
@@ -161,11 +165,16 @@ func (c *ConfigurationWatcher) applyConfigurations(ctx context.Context) {
 			if reflect.DeepEqual(newConfigs, lastConfigurations) {
 				continue
 			}
-
-			conf := mergeConfiguration(newConfigs.DeepCopy())
-
-			for _, listener := range c.configurationListeners {
-				listener(conf)
+			dest := dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Services: make(map[string]*dynamic.Service),
+				},
+			}
+			conf, err := copyConfigurations(&dest, &newConfigs)
+			if err == nil {
+				for _, listener := range c.configurationListeners {
+					listener(*conf)
+				}
 			}
 
 			lastConfigurations = newConfigs
@@ -174,15 +183,15 @@ func (c *ConfigurationWatcher) applyConfigurations(ctx context.Context) {
 }
 
 func logConfiguration(slog *logger2.Helper, configMsg dynamic.Message) {
-	copyConf := configMsg.Configuration.DeepCopy()
-
+	copyConf := new(dynamic.Configuration)
+	copyConf, err := copyConfiguration(copyConf, configMsg.Configuration)
 	jsonConf, err := json.Marshal(copyConf)
 	if err != nil {
 		slog.WithError(err).Error("Could not marshal dynamic configuration")
 		slog.Debugf("Configuration received: [struct] %#v", copyConf)
 	} else {
 		slog.WithFields(map[string]interface{}{
-			"config": jsonConf,
+			"config": string(jsonConf),
 		})
 		slog.Debug("Configuration received")
 	}
@@ -190,9 +199,67 @@ func logConfiguration(slog *logger2.Helper, configMsg dynamic.Message) {
 
 func isEmptyConfiguration(conf *dynamic.Configuration) bool {
 	if conf.HTTP == nil {
-		conf.HTTP = &dynamic.HTTPConfiguration{}
+		conf.HTTP = &dynamic.HTTPConfiguration{
+			Services: make(map[string]*dynamic.Service),
+		}
 	}
 
 	httpEmpty := conf.HTTP.Services == nil
 	return httpEmpty
+}
+
+// 合并配置
+func copyConfigurations(dest *dynamic.Configuration, src *dynamic.Configurations) (*dynamic.Configuration, error) {
+	var err error
+	//if src == nil {
+	//	return dest, nil
+	//}
+	//if dest == nil {
+	//	dest = new(dynamic.Configuration)
+	//}
+	for _, configuration := range *src {
+		err = copier.Copy(dest, configuration)
+		if err != nil {
+			log.Log.WithError(err).Error("copyConfigurations fail")
+			return dest, err
+		} else {
+			log.Log.Info("copyConfigurations success")
+		}
+	}
+	return dest, nil
+}
+
+func copyConfiguration(dest *dynamic.Configuration, src *dynamic.Configuration) (*dynamic.Configuration, error) {
+	//if src == nil {
+	//	return dest, nil
+	//}
+	//if dest == nil {
+	//	dest = new(dynamic.Configuration)
+	//}
+	err := copier.Copy(dest, src)
+	if err != nil {
+		log.Log.WithError(err).Error("copyConfiguration fail")
+		return dest, err
+	} else {
+		log.Log.Info("copyConfiguration success")
+	}
+	return dest, nil
+}
+
+func copyConfigurationData(dest *dynamic.Configurations, src *dynamic.Configurations) *dynamic.Configurations {
+	//if src == nil {
+	//	src = new(dynamic.Configurations)
+	//	return dest
+	//}
+	//if dest == nil {
+	//	dest = new(dynamic.Configurations)
+	//}
+	err := copier.Copy(dest, src)
+	if err != nil {
+		log.Log.WithError(err).Error("copyConfigurationData fail")
+		return dest
+	} else {
+		log.Log.Info("copyConfigurationData success")
+	}
+	return dest
 }

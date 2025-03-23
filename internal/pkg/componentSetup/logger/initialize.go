@@ -6,11 +6,10 @@ import (
 )
 
 func SetupLog(logConfig *log.Logger) {
-	log.NewLog(logConfig)
+	if logConfig != nil {
+		log.NewLog(logConfig)
+	} else {
+		log.NewDefaultLog()
+	}
 	log.Log = logger.NewHelper(logger.DefaultLogger)
 }
-
-//func Setup(conf *viper.Viper) {
-//	log.NewLogWithViper(conf)
-//	log.Log = logger.NewHelper(logger.DefaultLogger)
-//}

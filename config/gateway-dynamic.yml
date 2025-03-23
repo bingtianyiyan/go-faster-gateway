@@ -1,9 +1,0 @@
-balanceMode:
-  balance: wrr
-globalMiddleware:
-  - Cors
-http:
-  services:
-    myService:
-      service: testService
-

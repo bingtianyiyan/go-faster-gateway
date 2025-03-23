@@ -1,5 +1,7 @@
 package dynamic
 
+import "go-faster-gateway/pkg/database"
+
 // Message holds configuration information exchanged between parts of gateway
 type Message struct {
 	ProviderName  string
@@ -11,6 +13,9 @@ type Configurations map[string]*Configuration
 
 // Configuration is the root of the dynamic configuration.
 type Configuration struct {
+	//数据库
+	Databases *database.Database `description:"gateway db settings." json:"databases,omitempty" toml:"databases,omitempty" yaml:"databases,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
+
 	//负载均衡策略
 	BalanceMode BalanceMode `json:"balanceMode"  yaml:"balanceMode" `
 	//全局中间件

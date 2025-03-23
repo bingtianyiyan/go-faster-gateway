@@ -15,7 +15,7 @@ type options struct {
 
 func setDefault() options {
 	return options{
-		driver: "default",
+		driver: "zap",
 		level:  "warn",
 		writeTo: []*logger.WriteTo{
 			{Name: "file", Args: logger.File{Path: "temp/logs"}},

@@ -2,7 +2,6 @@ package static
 
 import (
 	"fmt"
-	"go-faster-gateway/pkg/database"
 	"go-faster-gateway/pkg/helper/env"
 	"go-faster-gateway/pkg/helper/parser"
 	"go-faster-gateway/pkg/helper/utils"
@@ -21,8 +20,6 @@ type Configuration struct {
 	Providers *Providers `description:"Providers configuration." json:"providers,omitempty" toml:"providers,omitempty" yaml:"providers,omitempty" export:"true"`
 	//日志
 	Logger *log.Logger `description:"gateway log settings." json:"log,omitempty" toml:"logger,omitempty" yaml:"logger,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
-	//数据库
-	Databases *database.Database `description:"gateway db settings." json:"databases,omitempty" toml:"databases,omitempty" yaml:"databases,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
 }
 
 // Providers contains providers configuration.
