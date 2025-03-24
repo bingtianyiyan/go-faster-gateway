@@ -1,14 +1,9 @@
 package static
 
 import (
-	"fmt"
-	"go-faster-gateway/pkg/helper/env"
 	"go-faster-gateway/pkg/helper/parser"
-	"go-faster-gateway/pkg/helper/utils"
 	"go-faster-gateway/pkg/log"
 	"go-faster-gateway/pkg/provider/file"
-	"os"
-	filePathExt "path/filepath"
 	"strings"
 )
 
@@ -46,42 +41,4 @@ type EntryPoint struct {
 func (ep *EntryPoint) GetAddress() string {
 	splitN := strings.SplitN(ep.Address, "/", 2)
 	return splitN[0]
-}
-
-func NewStaticConfig(filePath string) (*Configuration, error) {
-	c := &Configuration{}
-	filePath = getConvertConfigFilePath(filePath)
-	err := utils.GetFile(filePath, c)
-	return c, err
-}
-
-// getConvertConfigFilePath 处理转化文件名
-func getConvertConfigFilePath(filePath string) string {
-	//环境变量判断
-	envDefaultName := env.ModeProd.String()
-	envName := os.Getenv("EnvName")
-	//如果环境变量为空则返回默认配置文件地址
-	if envName == "" {
-		return filePath
-	}
-
-	envDefaultName = envName
-
-	sep := "/"
-	part1 := ""
-	// 找到最后一个分隔符的位置
-	index := strings.LastIndex(filePath, sep)
-	if index >= 0 {
-		// 使用最后一个分隔符位置对字符串进行分割
-		part1 = filePath[:index]
-		fmt.Println(part1)
-	}
-	//获取文件格式
-	var fileExt = filePathExt.Ext(filePath)
-	if part1 != "" {
-		filePath = part1 + "/" + "settings." + envDefaultName + fileExt
-	} else {
-		filePath = "settings." + envDefaultName + fileExt
-	}
-	return filePath
 }

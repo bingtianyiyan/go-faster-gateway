@@ -21,7 +21,8 @@ type ConfigurationWatcher struct {
 	allProvidersConfigs chan dynamic.Message
 
 	newConfigs chan dynamic.Configurations
-
+	// 动态文件
+	dyConfig               *dynamic.Configuration
 	requiredProvider       string
 	configurationListeners []func(dynamic.Configuration)
 
@@ -55,6 +56,18 @@ func (c *ConfigurationWatcher) Start() {
 func (c *ConfigurationWatcher) Stop() {
 	close(c.allProvidersConfigs)
 	close(c.newConfigs)
+}
+
+// get default config first
+func (c *ConfigurationWatcher) GetConfig() (*dynamic.Configuration, error) {
+	if c.dyConfig != nil {
+		return c.dyConfig, nil
+	}
+	msg, err := c.providerAggregator.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	return msg.Configuration, err
 }
 
 // AddListener adds a new listener function used when new configuration is provided.
@@ -118,7 +131,7 @@ func (c *ConfigurationWatcher) receiveConfigurations(ctx context.Context) {
 					continue
 				}
 
-				logConfiguration(slog, configMsg)
+				logConfiguration(configMsg)
 				//	dynamic.Configuration
 				dyConfig, ok := newConfigurations[configMsg.ProviderName]
 				if ok {
@@ -170,22 +183,23 @@ func (c *ConfigurationWatcher) applyConfigurations(ctx context.Context) {
 				for _, listener := range c.configurationListeners {
 					listener(*conf)
 				}
+				c.dyConfig = conf
 			}
-
+			//这边是最新的动态配置信息
 			lastConfigurations = newConfigs
 			log.Log.Debugf("lastConfiguration is %s", utils.JsonMarshalToStrNoErr(lastConfigurations))
 		}
 	}
 }
 
-func logConfiguration(slog *logger2.Helper, configMsg dynamic.Message) {
+func logConfiguration(configMsg dynamic.Message) {
 	copyConf, err := utils.DeepCopy(nil, configMsg.Configuration)
 	jsonConf, err := json.Marshal(copyConf)
 	if err != nil {
-		slog.WithError(err).Error("Could not marshal dynamic configuration")
-		slog.Debugf("Configuration received: [struct] %#v", copyConf)
+		log.Log.WithError(err).Error("Could not marshal dynamic configuration")
+		log.Log.Debugf("Configuration received: [struct] %#v", copyConf)
 	} else {
-		slog.Debugf("Configuration received %s", string(jsonConf))
+		log.Log.Debugf("Configuration received %s", string(jsonConf))
 	}
 }
 

@@ -24,14 +24,16 @@ var _ provider.Provider = (*Provider)(nil)
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Watch    bool   `description:"Watch provider." json:"watch,omitempty" toml:"watch,omitempty" yaml:"watch,omitempty" export:"true"`
-	Filename string `description:"Load dynamic configuration from a file." json:"filename,omitempty" toml:"filename,omitempty" yaml:"filename,omitempty" export:"true"`
+	Watch      bool   `description:"Watch provider." json:"watch,omitempty" toml:"watch,omitempty" yaml:"watch,omitempty" export:"true"`
+	Filename   string `description:"Load dynamic configuration from a file." json:"filename,omitempty" toml:"filename,omitempty" yaml:"filename,omitempty" export:"true"`
+	OrderIndex int    `description:"load order index." json:"orderIndex,omitempty" toml:"orderIndex,omitempty" yaml:"orderIndex,omitempty" export:"true"`
 }
 
 // SetDefaults sets the default values.
 func (p *Provider) SetDefaults() {
 	p.Watch = true
 	p.Filename = ""
+	p.OrderIndex = -1
 }
 
 // Init the provider.
@@ -88,6 +90,15 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 	return nil
 }
 
+// GetConfig for provider get config
+func (p *Provider) GetConfig() (dynamic.Message, error) {
+	configuration, err := p.buildConfiguration()
+	return dynamic.Message{
+		ProviderName:  "file",
+		Configuration: configuration,
+	}, err
+}
+
 func (p *Provider) addWatcher(pool *safe.Pool, items []string, configurationChan chan<- dynamic.Message, callback func(chan<- dynamic.Message) error) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -111,7 +122,7 @@ func (p *Provider) addWatcher(pool *safe.Pool, items []string, configurationChan
 			case <-ctx.Done():
 				return
 			case evt := <-watcher.Events:
-				if p.Filename != "" {
+				if len(p.Filename) > 0 {
 					_, evtFileName := filepath.Split(evt.Name)
 					_, confFileName := filepath.Split(p.Filename)
 					if evtFileName == confFileName {

@@ -21,3 +21,19 @@ func GetFile(filename string, element interface{}) error {
 	}
 	return err
 }
+
+func GetViperFile(filename string, element interface{}) (*viper.Viper, error) {
+	var err error
+	v := viper.New()
+	v.AddConfigPath(path.Dir(filename))
+	v.SetConfigName(path.Base(filename))
+	ext := path.Ext(filename)
+	v.SetConfigType(strings.TrimLeft(ext, "."))
+	if err = v.ReadInConfig(); err != nil {
+		return v, err
+	}
+	if err = v.Unmarshal(element); err != nil {
+		return v, err
+	}
+	return v, err
+}

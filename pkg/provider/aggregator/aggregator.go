@@ -4,6 +4,7 @@ import (
 	"context"
 	"go-faster-gateway/pkg/config/dynamic"
 	"go-faster-gateway/pkg/config/static"
+	"go-faster-gateway/pkg/helper/utils"
 	"go-faster-gateway/pkg/log"
 	"go-faster-gateway/pkg/provider"
 	"go-faster-gateway/pkg/provider/file"
@@ -124,6 +125,34 @@ func (p *ProviderAggregator) Provide(configurationChan chan<- dynamic.Message, p
 	}
 
 	return nil
+}
+
+func (p *ProviderAggregator) GetConfig() (dynamic.Message, error) {
+	var dyConfig = new(dynamic.Configuration)
+	//合并所有动态配置文件
+	if p.fileProvider != nil {
+		dyConfig = resolveProviderConfig(p.fileProvider, dyConfig)
+	}
+	for _, prd := range p.providers {
+		dyConfig = resolveProviderConfig(prd, dyConfig)
+	}
+	return dynamic.Message{
+		Configuration: dyConfig,
+	}, nil
+}
+
+func resolveProviderConfig(c provider.Provider, dyConfig *dynamic.Configuration) *dynamic.Configuration {
+	msg, err := c.GetConfig()
+	if err != nil {
+		log.Log.WithError(err).Error("aggregate GetConfig fail")
+		return nil
+	}
+	dyConfig, err = utils.DeepCopy(dyConfig, msg.Configuration)
+	if err != nil {
+		log.Log.WithError(err).Error("aggregate DeepCopy fail")
+		return nil
+	}
+	return dyConfig
 }
 
 func (p *ProviderAggregator) launchProvider(configurationChan chan<- dynamic.Message, pool *safe.Pool, prd provider.Provider) {

@@ -39,7 +39,7 @@ http:
       routers:
         path: /api/blogs
         method: "*"
-        proxyPath: /blogs
+        proxyPath: /api/blogs
       servers:
         - host: 127.0.0.1
           port: 6785

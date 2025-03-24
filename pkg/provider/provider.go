@@ -11,4 +11,5 @@ type Provider interface {
 	// using the given configuration channel.
 	Provide(configurationChan chan<- dynamic.Message, pool *safe.Pool) error
 	Init() error
+	GetConfig() (dynamic.Message, error)
 }

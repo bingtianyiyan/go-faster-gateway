@@ -5,7 +5,6 @@ import (
 	"errors"
 	"go-faster-gateway/internal/pkg/middleware"
 	"go-faster-gateway/pkg/config"
-	"go-faster-gateway/pkg/config/static"
 	"go-faster-gateway/pkg/log"
 	logger2 "go-faster-gateway/pkg/log/logger"
 	"go-faster-gateway/pkg/safe"
@@ -18,8 +17,7 @@ var _ middleware.IServer = (*Server)(nil)
 
 // Server is the reverse-proxy/load-balancer engine.
 type Server struct {
-	watcher             *config.ConfigurationWatcher
-	StaticConfiguration *static.Configuration
+	configManager *config.ConfigurationManager
 	//RouteManager        *router.RouterManager
 	//App                 *fasthttp.Server // 代理服务
 	signals      chan os.Signal
@@ -30,23 +28,10 @@ type Server struct {
 // Option 参数选项
 type Option func(server *Server)
 
-// 配置文件
-func WithConfiguration(c *static.Configuration) Option {
+// 配置文件管理
+func WithConfigurationManager(c *config.ConfigurationManager) Option {
 	return func(s *Server) {
-		s.StaticConfiguration = c
-	}
-}
-
-// 配置路由信息
-//func WithRouteManager(c *router.RouterManager) Option {
-//	return func(s *Server) {
-//		s.RouteManager = c
-//	}
-//}
-
-func WithWatch(c *config.ConfigurationWatcher) Option {
-	return func(s *Server) {
-		s.watcher = c
+		s.configManager = c
 	}
 }
 
@@ -89,7 +74,7 @@ func (s *Server) Start(ctx context.Context) {
 	}()
 
 	//s.tcpEntryPoints.Start()
-	s.watcher.Start()
+	s.configManager.GetWatcher().Start()
 	s.routinesPool.GoCtx(s.listenSignals)
 
 	//s.App = &fasthttp.Server{
