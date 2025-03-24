@@ -3,7 +3,6 @@ package redactor
 import (
 	"encoding/json"
 	"fmt"
-	"go-faster-gateway/pkg/helper/parser"
 	"reflect"
 
 	"mvdan.cc/xurls/v2"
@@ -70,10 +69,10 @@ func doOnJSON(input string) string {
 }
 
 func doOnStruct(field reflect.Value, tag string, redactByDefault bool) error {
-	if field.Type().AssignableTo(reflect.TypeOf(parser.PluginConf{})) {
-		resetPlugin(field)
-		return nil
-	}
+	//if field.Type().AssignableTo(reflect.TypeOf(parser.PluginConf{})) {
+	//	resetPlugin(field)
+	//	return nil
+	//}
 
 	switch field.Kind() {
 	case reflect.Ptr:
@@ -164,11 +163,12 @@ func reset(field reflect.Value, name string) error {
 		}
 	case reflect.String:
 		if field.String() != "" {
-			if field.Type().AssignableTo(reflect.TypeOf(parser.FileOrContent(""))) {
-				field.Set(reflect.ValueOf(parser.FileOrContent(maskShort)))
-			} else {
-				field.Set(reflect.ValueOf(maskShort))
-			}
+			//if field.Type().AssignableTo(reflect.TypeOf(parser.FileOrContent(""))) {
+			//	field.Set(reflect.ValueOf(parser.FileOrContent(maskShort)))
+			//} else {
+			//	field.Set(reflect.ValueOf(maskShort))
+			//}
+			field.Set(reflect.ValueOf(maskShort))
 		}
 	case reflect.Map:
 		if field.Len() > 0 {
