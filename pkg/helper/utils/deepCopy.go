@@ -9,7 +9,9 @@ func DeepCopy[T any](dest *T, src *T) (*T, error) {
 	if dest == nil {
 		dest = new(T)
 	}
-	err := copier.Copy(dest, src)
+	err := copier.CopyWithOption(dest, src, copier.Option{
+		IgnoreEmpty: true,
+	})
 	if err != nil {
 		log.Log.WithError(err).Error("DeepCopy fail")
 		return dest, err
@@ -21,7 +23,9 @@ func DeepCopyDefault[T any](dest *T, src *T) *T {
 	if dest == nil {
 		dest = new(T)
 	}
-	err := copier.Copy(dest, src)
+	err := copier.CopyWithOption(dest, src, copier.Option{
+		IgnoreEmpty: true,
+	})
 	if err != nil {
 		log.Log.WithError(err).Error("DeepCopyDefault fail")
 		return dest
@@ -35,7 +39,9 @@ func DeepCopyMap[T any, R string](dest *T, src map[R]*T) (*T, error) {
 	}
 	var err error
 	for _, configuration := range src {
-		err = copier.Copy(dest, configuration)
+		err = copier.CopyWithOption(dest, configuration, copier.Option{
+			IgnoreEmpty: true,
+		})
 		if err != nil {
 			log.Log.WithError(err).Error("DeepCopyMap fail")
 			return dest, err

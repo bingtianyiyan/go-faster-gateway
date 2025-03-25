@@ -23,7 +23,6 @@ import (
 )
 
 var (
-	err           error
 	defaultConfig string
 	configManager *configLoader.ConfigurationManager
 	StartCmd      = &cobra.Command{
@@ -68,9 +67,6 @@ func run() error {
 	routinesPool := safe.NewPool(ctx)
 	//这边可以加入其他文件提供者
 
-	//db
-	//db_init.SetupDb(dynamic.Configuration)
-
 	// Watcher
 	watcher := configLoader.NewConfigurationWatcher(
 		routinesPool,
@@ -78,8 +74,7 @@ func run() error {
 		"file",
 	)
 
-	watcher.AddListener(switchDb(ctx))
-	// Switch router  构建tcp和udp路由
+	// Switch router  构建路由
 	watcher.AddListener(switchRouter(ctx, router.NewRouterManager()))
 	configManager.SetWatch(watcher)
 	//第一次获取动态文件 并且设置，后面都由watch去更新
@@ -90,6 +85,8 @@ func run() error {
 	} else {
 		configManager.SetDynamicConfig(dyConfig)
 	}
+
+	db_init.SetupDb(dyConfig.Databases)
 
 	svr := server.NewServer(server.WithConfigurationManager(configManager),
 		server.WithRoutePool(routinesPool),
@@ -115,8 +112,6 @@ func run() error {
 	log.Log.Info("Shutting down")
 
 	//http.Run(app, fmt.Sprintf(":%d", conf.GetInt("http.port")))
-
-	return err
 	log.Exit(0)
 	return err
 }
@@ -128,14 +123,5 @@ func switchRouter(ctx context.Context, routerFactory *router.RouterManager) func
 		routerFactory.CreateRouters(ctx, conf)
 		log.Log.Info(conf.BalanceMode.Balance)
 		log.Log.Info("finish print switchRouter")
-	}
-}
-
-func switchDb(ctx context.Context) func(conf dynamic.Configuration) {
-	return func(conf dynamic.Configuration) {
-		//if reflect.DeepEqual(dyConfig, configMsg.Configuration) {
-		//	return
-		//}
-		db_init.SetupDb(conf.Databases)
 	}
 }

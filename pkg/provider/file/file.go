@@ -24,16 +24,14 @@ var _ provider.Provider = (*Provider)(nil)
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Watch      bool   `description:"Watch provider." json:"watch,omitempty" toml:"watch,omitempty" yaml:"watch,omitempty" export:"true"`
-	Filename   string `description:"Load dynamic configuration from a file." json:"filename,omitempty" toml:"filename,omitempty" yaml:"filename,omitempty" export:"true"`
-	OrderIndex int    `description:"load order index." json:"orderIndex,omitempty" toml:"orderIndex,omitempty" yaml:"orderIndex,omitempty" export:"true"`
+	Watch    bool   `description:"Watch provider." json:"watch,omitempty" toml:"watch,omitempty" yaml:"watch,omitempty" export:"true"`
+	Filename string `description:"Load dynamic configuration from a file." json:"filename,omitempty" toml:"filename,omitempty" yaml:"filename,omitempty" export:"true"`
 }
 
 // SetDefaults sets the default values.
 func (p *Provider) SetDefaults() {
 	p.Watch = true
 	p.Filename = ""
-	p.OrderIndex = -1
 }
 
 // Init the provider.
