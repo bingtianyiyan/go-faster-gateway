@@ -3,7 +3,10 @@ package api
 import (
 	"context"
 	"fmt"
+	"go-faster-gateway/internal/pkg/balancer"
 	db_init "go-faster-gateway/internal/pkg/componentSetup/database"
+	"go-faster-gateway/internal/pkg/protocols"
+	"go-faster-gateway/internal/pkg/server/fast"
 	"go-faster-gateway/pkg/log/logger"
 	"os"
 	"os/signal"
@@ -67,15 +70,22 @@ func run() error {
 	routinesPool := safe.NewPool(ctx)
 	//这边可以加入其他文件提供者
 
+	upstreamManager := balancer.NewUpstreamManager()
+	httpHandler := protocols.NewHTTPHandler(upstreamManager)
+	protocolManager := protocols.NewProtocolFactory([]protocols.ProtocolHandler{
+		httpHandler,
+	})
+
 	// Watcher
 	watcher := configLoader.NewConfigurationWatcher(
 		routinesPool,
 		providerAggregator,
 		"file",
 	)
-
+	routerManager := router.NewRouterManager(upstreamManager, protocolManager)
+	//httpServer
+	fastHttp := fast.NewHttpServer(configManager.GetStaticConfig(), routerManager)
 	// Switch router  构建路由
-	watcher.AddListener(switchRouter(ctx, router.NewRouterManager()))
 	configManager.SetWatch(watcher)
 	//第一次获取动态文件 并且设置，后面都由watch去更新
 	dyConfig, err := configManager.GetWatcher().GetConfig()
@@ -85,10 +95,14 @@ func run() error {
 	} else {
 		configManager.SetDynamicConfig(dyConfig)
 	}
+	routerManager.CreateRouters(ctx, *dyConfig)
+	//add listener
+	watcher.AddListener(switchRouter(ctx, routerManager, fastHttp))
 
 	db_init.SetupDb(dyConfig.Databases)
 
 	svr := server.NewServer(server.WithConfigurationManager(configManager),
+		server.WithFastHttpServer(fastHttp),
 		server.WithRoutePool(routinesPool),
 		server.WithSignals(make(chan os.Signal, 1)),
 		server.WithStopChan(make(chan bool, 1)))
@@ -116,12 +130,12 @@ func run() error {
 	return err
 }
 
-func switchRouter(ctx context.Context, routerFactory *router.RouterManager) func(conf dynamic.Configuration) {
+func switchRouter(ctx context.Context, routerFactory *router.RouterManager, fastHttp *fast.HttpServer) func(conf dynamic.Configuration) {
 	return func(conf dynamic.Configuration) {
 		fmt.Println("switch router")
 		// http对应的路由信息
 		routerFactory.CreateRouters(ctx, conf)
-		log.Log.Info(conf.BalanceMode.Balance)
+		fastHttp.SwitchRouter()
 		log.Log.Info("finish print switchRouter")
 	}
 }

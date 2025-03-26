@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"go-faster-gateway/internal/pkg/middleware"
+	"go-faster-gateway/internal/pkg/server/fast"
 	"go-faster-gateway/pkg/config"
 	"go-faster-gateway/pkg/log"
 	logger2 "go-faster-gateway/pkg/log/logger"
@@ -17,12 +18,11 @@ var _ middleware.IServer = (*Server)(nil)
 
 // Server is the reverse-proxy/load-balancer engine.
 type Server struct {
-	configManager *config.ConfigurationManager
-	//RouteManager        *router.RouterManager
-	//App                 *fasthttp.Server // 代理服务
-	signals      chan os.Signal
-	stopChan     chan bool
-	routinesPool *safe.Pool
+	configManager  *config.ConfigurationManager
+	fastHttpServer *fast.HttpServer
+	signals        chan os.Signal
+	stopChan       chan bool
+	routinesPool   *safe.Pool
 }
 
 // Option 参数选项
@@ -32,6 +32,12 @@ type Option func(server *Server)
 func WithConfigurationManager(c *config.ConfigurationManager) Option {
 	return func(s *Server) {
 		s.configManager = c
+	}
+}
+
+func WithFastHttpServer(c *fast.HttpServer) Option {
+	return func(s *Server) {
+		s.fastHttpServer = c
 	}
 }
 
@@ -73,30 +79,9 @@ func (s *Server) Start(ctx context.Context) {
 		s.Stop()
 	}()
 
-	//s.tcpEntryPoints.Start()
+	s.fastHttpServer.Start()
 	s.configManager.GetWatcher().Start()
 	s.routinesPool.GoCtx(s.listenSignals)
-
-	//s.App = &fasthttp.Server{
-	//	IdleTimeout:  60 * time.Second,
-	//	ReadTimeout:  5 * time.Second,
-	//	WriteTimeout: 5 * time.Second,
-	//}
-	//s.App.Handler = s.RouteManager.Handler
-	//
-	//// 启动http服务代理
-	//if len(s.StaticConfiguration.EntryPoint.Address) > 0 {
-	//	go s.startHttpProxy()
-	//}
-	//
-	////// 启动https服务代理
-	////if s.GetStaticConfig().Entrypoints.Websecure != nil {
-	////	// 启动https服务代理
-	////	//go s.startHTTPSProxy()
-	////}
-	//
-	//// 等待关闭
-	//return s.WaitStop()
 }
 
 // Wait blocks until the server shutdown.
@@ -108,7 +93,7 @@ func (s *Server) Wait() {
 func (s *Server) Stop() {
 	defer log.Log.Info("Server stopped")
 
-	//s.tcpEntryPoints.Stop()
+	s.fastHttpServer.Stop()
 	s.stopChan <- true
 }
 
@@ -133,26 +118,6 @@ func (s *Server) Close() {
 	close(s.stopChan)
 
 	cancel()
-}
-
-// startHttpProxy 启动http代理
-func (s *Server) startHttpProxy() error {
-	//err := s.App.ListenAndServe(fmt.Sprintf("%s:%d", s.StaticConfiguration.EntryPoint.Address, s.StaticConfiguration.EntryPoint.Port))
-	//if err != nil {
-	//	log.Log.WithError(err).Error("failed to start http gateway")
-	//}
-	//return err
-	return nil
-}
-
-// startHTTPSProxy 启动https代理
-func (s *Server) startHTTPSProxy() error {
-	//err := s.App.ListenAndServeTLS(s.GetStaticConfig().Entrypoints.Websecure.Addr, s.GetStaticConfig().TLS.CertFile, s.GetStaticConfig().TLS.KeyFile)
-	//if err != nil {
-	//	log.Logger.Error("failed to start https gateway", zap.Error(err))
-	//}
-	//return err
-	return nil
 }
 
 func (s *Server) configureSignals() {}

@@ -43,16 +43,21 @@ func (u *Upstream) Watcher(ch SyncNodesCh) {
 	}
 }
 
-func (u *Upstream) AddToLB(service string, nodes []*Node, algorithm string) {
+func (u *Upstream) AddToLB(service string, nodes []*Node, algorithm string) error {
+	var err error
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	_, ok := u.LB[service]
 	if !ok {
-		u.LB[service], _ = Build(algorithm, nodes)
+		u.LB[service], err = Build(algorithm, nodes)
+		if err != nil {
+			return err
+		}
 	}
 	for _, v := range nodes {
 		u.LB[service].Add(v)
 	}
+	return err
 }
 
 func (u *Upstream) GetNextUpstream(service string) (string, error) {

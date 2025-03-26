@@ -29,7 +29,7 @@ Databases:
     - Sources: ["root:root@tcp(127.0.0.1:3306)/gateway?charset=utf8&parseTime=True&loc=Local&timeout=1000ms"]
 
 balanceMode:
-  balance: wrr
+  balance: wwr
 globalMiddleware:
   - Cors
 http:

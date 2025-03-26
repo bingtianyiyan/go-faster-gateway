@@ -47,21 +47,23 @@ func (sr *StaticRouter) Match(key string) *dynamic.Service {
 	return nil
 }
 
-type routerHandler func(ctx *fasthttp.RequestCtx, routerInfo *dynamic.Service)
+type routerHandler func(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configuration, routerInfo *dynamic.Service)
 
 // DyRouter 动态路由匹配, 将路由规则最终转换成httprouter
 type DyRouter struct {
-	apis    map[string]*dynamic.Service
-	Handler routerHandler
-	Router  *fasthttprouter.Router
-	Md5     string
-	mu      sync.RWMutex
+	apis     map[string]*dynamic.Service
+	Handler  routerHandler
+	DyConfig *dynamic.Configuration
+	Router   *fasthttprouter.Router
+	Md5      string
+	mu       sync.RWMutex
 }
 
-func NewDyRouter(handler routerHandler) *DyRouter {
+func NewDyRouter(handler routerHandler, dyConfig *dynamic.Configuration) *DyRouter {
 	return &DyRouter{
-		apis:    make(map[string]*dynamic.Service),
-		Handler: handler,
+		apis:     make(map[string]*dynamic.Service),
+		DyConfig: dyConfig,
+		Handler:  handler,
 	}
 }
 
@@ -80,7 +82,7 @@ func (sr *DyRouter) BuildRouter(apis []*dynamic.Service, mwHandler *middleware.M
 			}
 		}
 		h := func(ctx *fasthttp.RequestCtx) {
-			sr.Handler(ctx, temp)
+			sr.Handler(ctx, sr.DyConfig, temp)
 		}
 		chains := middleware.Chain(h, handlers...)
 		sr.Router.Handle(v.Routers.Method, v.Routers.Path, chains)
