@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"go-faster-gateway/internal/pkg/middleware"
-	"go-faster-gateway/internal/pkg/server/fast"
-	"go-faster-gateway/pkg/config"
+	"go-faster-gateway/internal/pkg/server"
 	"go-faster-gateway/pkg/log"
 	logger2 "go-faster-gateway/pkg/log/logger"
 	"go-faster-gateway/pkg/safe"
@@ -18,8 +17,7 @@ var _ middleware.IServer = (*Server)(nil)
 
 // Server is the reverse-proxy/load-balancer engine.
 type Server struct {
-	configManager  *config.ConfigurationManager
-	fastHttpServer *fast.HttpServer
+	serviceManager *server.ServiceManager
 	signals        chan os.Signal
 	stopChan       chan bool
 	routinesPool   *safe.Pool
@@ -28,16 +26,9 @@ type Server struct {
 // Option 参数选项
 type Option func(server *Server)
 
-// 配置文件管理
-func WithConfigurationManager(c *config.ConfigurationManager) Option {
+func WithServiceManager(c *server.ServiceManager) Option {
 	return func(s *Server) {
-		s.configManager = c
-	}
-}
-
-func WithFastHttpServer(c *fast.HttpServer) Option {
-	return func(s *Server) {
-		s.fastHttpServer = c
+		s.serviceManager = c
 	}
 }
 
@@ -79,8 +70,8 @@ func (s *Server) Start(ctx context.Context) {
 		s.Stop()
 	}()
 
-	s.fastHttpServer.Start()
-	s.configManager.GetWatcher().Start()
+	s.serviceManager.GetFastServer().Start()
+	s.serviceManager.GetConfigManager().GetWatcher().Start()
 	s.routinesPool.GoCtx(s.listenSignals)
 }
 
@@ -93,7 +84,7 @@ func (s *Server) Wait() {
 func (s *Server) Stop() {
 	defer log.Log.Info("Server stopped")
 
-	s.fastHttpServer.Stop()
+	s.serviceManager.GetFastServer().Stop()
 	s.stopChan <- true
 }
 

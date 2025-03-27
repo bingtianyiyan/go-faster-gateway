@@ -8,6 +8,7 @@ import (
 	"go-faster-gateway/pkg/helper/env"
 	"go-faster-gateway/pkg/helper/utils"
 	"go-faster-gateway/pkg/log"
+	"go-faster-gateway/pkg/provider/aggregator"
 	"os"
 	filePathExt "path/filepath"
 	"strings"
@@ -18,29 +19,21 @@ type ConfigurationManager struct {
 	filePath        string
 	watchStaticFile bool
 	staticConfig    *static.Configuration
-	dynamicConfig   *dynamic.Configuration
-	watch           *ConfigurationWatcher
+	//dynamicConfig   *dynamic.Configuration
+	watch     *ConfigurationWatcher
+	providers *aggregator.ProviderAggregator
 }
 
 func NewConfigurationManager(filePath string, watchStaticFile bool) *ConfigurationManager {
 	return &ConfigurationManager{
 		filePath:        filePath,
 		watchStaticFile: watchStaticFile,
-		//staticConfig:  new(static.Configuration),
-		dynamicConfig: new(dynamic.Configuration),
+		//dynamicConfig:   new(dynamic.Configuration),
 	}
 }
 
 func (f *ConfigurationManager) SetWatch(watch *ConfigurationWatcher) {
 	f.watch = watch
-}
-
-func (f *ConfigurationManager) SetStaticConfig(scConfig *static.Configuration) {
-	f.staticConfig = scConfig
-}
-
-func (f *ConfigurationManager) SetDynamicConfig(dyConfig *dynamic.Configuration) {
-	f.dynamicConfig = dyConfig
 }
 
 func (f *ConfigurationManager) GetStaticConfig() *static.Configuration {
@@ -51,8 +44,9 @@ func (f *ConfigurationManager) GetStaticConfig() *static.Configuration {
 	return f.staticConfig
 }
 
-func (f *ConfigurationManager) GetDynamicConfig() *dynamic.Configuration {
-	return f.dynamicConfig
+func (f *ConfigurationManager) GetDynamicConfig() (*dynamic.Configuration, error) {
+	dyConfig, err := f.watch.GetConfig()
+	return dyConfig, err
 }
 
 func (f *ConfigurationManager) GetWatcher() *ConfigurationWatcher {

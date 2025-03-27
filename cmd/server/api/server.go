@@ -6,7 +6,7 @@ import (
 	"go-faster-gateway/internal/pkg/balancer"
 	db_init "go-faster-gateway/internal/pkg/componentSetup/database"
 	"go-faster-gateway/internal/pkg/protocols"
-	"go-faster-gateway/internal/pkg/server/fast"
+	servers "go-faster-gateway/internal/pkg/server"
 	"go-faster-gateway/pkg/log/logger"
 	"os"
 	"os/signal"
@@ -68,10 +68,12 @@ func run() error {
 	providerAggregator := aggregator.NewProviderAggregator(*configManager.GetStaticConfig().Providers)
 	ctx := logger.NewContext(context.Background(), log.Log)
 	routinesPool := safe.NewPool(ctx)
-	//这边可以加入其他文件提供者
+	// TODO 这边可以加入其他文件提供者
 
+	//构建blance和协议
 	upstreamManager := balancer.NewUpstreamManager()
 	httpHandler := protocols.NewHTTPHandler(upstreamManager)
+	//TODO websocket
 	protocolManager := protocols.NewProtocolFactory([]protocols.ProtocolHandler{
 		httpHandler,
 	})
@@ -82,27 +84,25 @@ func run() error {
 		providerAggregator,
 		"file",
 	)
-	routerManager := router.NewRouterManager(upstreamManager, protocolManager)
-	//httpServer
-	fastHttp := fast.NewHttpServer(configManager.GetStaticConfig(), routerManager)
-	// Switch router  构建路由
 	configManager.SetWatch(watcher)
-	//第一次获取动态文件 并且设置，后面都由watch去更新
-	dyConfig, err := configManager.GetWatcher().GetConfig()
+
+	//第一次获取动态文件 后面都由watch去更新，这边需要在watch设置完之后获取
+	dyConfig, err := configManager.GetDynamicConfig()
 	if err != nil {
-		log.Log.WithError(err).Error("configManager.GetWatcher().GetConfig() fail")
+		log.Log.WithError(err).Error("configManager.GetDynamicConfig fail")
 		return err
-	} else {
-		configManager.SetDynamicConfig(dyConfig)
 	}
-	routerManager.CreateRouters(ctx, *dyConfig)
+
+	routerManager := router.NewRouterManager(upstreamManager, protocolManager)
+	serviceManager := servers.NewServiceManager(ctx, configManager, routerManager)
+	serviceManager.InitBuildServer()
+
 	//add listener
-	watcher.AddListener(switchRouter(ctx, routerManager, fastHttp))
+	watcher.AddListener(switchRouter(serviceManager))
 
 	db_init.SetupDb(dyConfig.Databases)
 
-	svr := server.NewServer(server.WithConfigurationManager(configManager),
-		server.WithFastHttpServer(fastHttp),
+	svr := server.NewServer(server.WithServiceManager(serviceManager),
 		server.WithRoutePool(routinesPool),
 		server.WithSignals(make(chan os.Signal, 1)),
 		server.WithStopChan(make(chan bool, 1)))
@@ -130,12 +130,8 @@ func run() error {
 	return err
 }
 
-func switchRouter(ctx context.Context, routerFactory *router.RouterManager, fastHttp *fast.HttpServer) func(conf dynamic.Configuration) {
+func switchRouter(serviceManager *servers.ServiceManager) func(conf dynamic.Configuration) {
 	return func(conf dynamic.Configuration) {
-		fmt.Println("switch router")
-		// http对应的路由信息
-		routerFactory.CreateRouters(ctx, conf)
-		fastHttp.SwitchRouter()
-		log.Log.Info("finish print switchRouter")
+		serviceManager.SwitchFastHttpRouter(conf)
 	}
 }

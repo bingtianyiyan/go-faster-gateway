@@ -3,7 +3,6 @@ package fast
 import (
 	"fmt"
 	"github.com/valyala/fasthttp"
-	"go-faster-gateway/internal/pkg/router"
 	"go-faster-gateway/pkg/config/static"
 	"go-faster-gateway/pkg/log"
 	"go.uber.org/zap"
@@ -15,26 +14,25 @@ import (
 
 type HttpServer struct {
 	staticConfig *static.Configuration
-	routeManager *router.RouterManager
-	appServer    *fasthttp.Server // 代理服务
+	//routeManager *router.RouterManager
+	appServer *fasthttp.Server // 代理服务
+	handler   func(ctx *fasthttp.RequestCtx)
 }
 
 func NewHttpServer(staticConfig *static.Configuration,
-	routeManager *router.RouterManager) *HttpServer {
+	handler func(ctx *fasthttp.RequestCtx)) *HttpServer {
 	return &HttpServer{
 		staticConfig: staticConfig,
-		routeManager: routeManager,
+		handler:      handler,
+		appServer: &fasthttp.Server{
+			IdleTimeout:  60 * time.Second,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+		},
 	}
 }
 
 func (s *HttpServer) Start() {
-	s.appServer = &fasthttp.Server{
-		IdleTimeout:  60 * time.Second,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-	}
-	s.appServer.Handler = s.routeManager.Handler
-
 	// 启动http服务代理
 	if len(s.staticConfig.EntryPoint.Address) > 0 {
 		go s.startHttpProxy()
@@ -82,6 +80,6 @@ func (s *HttpServer) startHTTPSProxy() error {
 	return nil
 }
 
-func (s *HttpServer) SwitchRouter() {
-	s.appServer.Handler = s.routeManager.Handler
+func (s *HttpServer) SwitchRouter(handler func(ctx *fasthttp.RequestCtx)) {
+	s.appServer.Handler = handler
 }

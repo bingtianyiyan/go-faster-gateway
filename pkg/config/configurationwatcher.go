@@ -16,8 +16,6 @@ import (
 type ConfigurationWatcher struct {
 	providerAggregator provider.Provider
 
-	//defaultEntryPoints []string
-
 	allProvidersConfigs chan dynamic.Message
 
 	newConfigs chan dynamic.Configurations
