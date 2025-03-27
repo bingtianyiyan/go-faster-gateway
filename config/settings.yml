@@ -37,9 +37,9 @@ http:
     myBlogService:
       service: testBlogService
       routers:
-        path: /api/blogs
+        path: "/api/*filepath"
         method: "*"
-        proxyPath: /blogs
+        proxyPath:
       servers:
         - host: 127.0.0.1
           port: 6785

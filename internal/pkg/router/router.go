@@ -89,10 +89,25 @@ func (sr *DyRouter) BuildRouter(apis []*dynamic.Service, mwHandler *middleware.M
 			//sr.Handler(ctx, sr.DyConfig, temp)
 		}
 		chains := middleware.Chain(h, handlers...)
-		sr.Router.Handle(v.Routers.Method, v.Routers.Path, chains)
+		reqMethod := v.Routers.Method
+		if reqMethod == "*" {
+			sr.registerAllMethods(v.Routers.Path, chains)
+		} else {
+			sr.Router.Handle(v.Routers.Method, v.Routers.Path, chains)
+		}
 	}
 	apiJson, _ := json.Marshal(apis)
 	sr.Md5 = md5.MD5(apiJson)
+}
+
+func (sr *DyRouter) registerAllMethods(path string, handler fasthttp.RequestHandler) {
+	sr.Router.GET(path, handler)
+	sr.Router.POST(path, handler)
+	sr.Router.PUT(path, handler)
+	sr.Router.DELETE(path, handler)
+	sr.Router.PATCH(path, handler)
+	sr.Router.HEAD(path, handler)
+	sr.Router.OPTIONS(path, handler)
 }
 
 // Match 动态路由不需要，完全由router去代理

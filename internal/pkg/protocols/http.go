@@ -50,7 +50,13 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configu
 		Addr:  upstreamServer,
 		IsTLS: ctx.IsTLS(),
 	}
-	req.SetRequestURI("http://" + upstreamServer + routerInfo.Routers.ProxyPath)
+	var proxyPath string
+	if routerInfo.Routers.ProxyPath == "" {
+		proxyPath = string(ctx.Path())
+	} else {
+		proxyPath = routerInfo.Routers.ProxyPath
+	}
+	req.SetRequestURI("http://" + upstreamServer + proxyPath)
 	// 创建一个新的响应
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
