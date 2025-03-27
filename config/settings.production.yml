@@ -11,7 +11,7 @@ Logger:
 
 entryPoint:
   address: 127.0.0.1
-  port: 45678
+  port: 12000
 
 #=============================dynamic
 providers:
@@ -32,14 +32,30 @@ balanceMode:
   balance: wwr
 globalMiddleware:
   - Cors
-http:
+easyServiceRoute:
   services:
     myBlogService:
-      service: testBlogService
-      routers:
-        path: "/api/*filepath"
-        method: "*"
-        proxyPath:
-      servers:
-        - host: 127.0.0.1
-          port: 6785
+      myBlogServiceHttp:
+        balanceMode:  wwr
+        handler: http
+        routers:
+          - path: "/api/*filepath"
+            methods: ["POST","DELETE","GET","PUT","OPTIONS"]
+        #             - path: "/api/Account/Login"
+        #               methods: ["POST"]
+        servers:
+          - host: 127.0.0.1
+            port: 19002
+            weight: 1
+          - host: 127.0.0.1
+            port: 19002
+            weight: 2
+#         myBlogServiceWebSocket:
+#           serviceName:
+#      routers:
+#        path: "/api/*filepath"
+#        method: "*"
+#        proxyPath:
+#      servers:
+#        - host: 121.196.220.148
+#          port: 19002

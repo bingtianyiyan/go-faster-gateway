@@ -23,7 +23,7 @@ func NewUpstreamManager() *UpstreamManager {
 }
 
 // GetLBUpstream 获取负载均衡后的上游服务
-func (f *UpstreamManager) GetLBUpstream(serviceName string, config *dynamic.Configuration) (string, error) {
+func (f *UpstreamManager) GetLBUpstream(serviceName string, routerInfo *dynamic.ServiceRoute) (string, error) {
 	var (
 		us  string
 		err error
@@ -32,10 +32,9 @@ func (f *UpstreamManager) GetLBUpstream(serviceName string, config *dynamic.Conf
 	if err != nil && !errors.Is(err, ecode.UpstreamNotInit) {
 		return "", err
 	}
-	var serviceMap = config.HTTP.Services[serviceName]
-	var modelNode = func(model *dynamic.Service) []*balancer.Node {
+	var modelNode = func(modelMap []dynamic.Server) []*balancer.Node {
 		nodes := make([]*balancer.Node, 0)
-		for _, v := range model.Servers {
+		for _, v := range modelMap {
 			node := &balancer.Node{
 				Service: v.Host,
 				Port:    uint32(v.Port),
@@ -46,8 +45,8 @@ func (f *UpstreamManager) GetLBUpstream(serviceName string, config *dynamic.Conf
 		}
 		return nodes
 	}
-	nodes := modelNode(serviceMap)
-	err = f.Upstreams.AddToLB(serviceName, nodes, config.BalanceMode.Balance)
+	nodes := modelNode(routerInfo.Servers)
+	err = f.Upstreams.AddToLB(serviceName, nodes, routerInfo.BalanceMode)
 	if err != nil {
 		log.Log.WithError(err).Error("AddToLB fail")
 		return us, err

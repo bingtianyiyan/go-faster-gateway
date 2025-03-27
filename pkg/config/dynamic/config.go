@@ -17,11 +17,11 @@ type Configuration struct {
 	Databases *database.Database `description:"gateway db settings." json:"databases,omitempty" toml:"databases,omitempty" yaml:"databases,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
 
 	//负载均衡策略
-	BalanceMode BalanceMode `json:"balanceMode"  yaml:"balanceMode" `
+	BalanceMode BalanceMode `json:"balanceMode" toml:"balanceMode,omitempty" yaml:"balanceMode" `
 	//全局中间件
-	GlobalMiddleware []string `json:"globalMiddleware" yaml:"globalMiddleware"`
+	GlobalMiddleware []string `json:"globalMiddleware" toml:"globalMiddleware,omitempty" yaml:"globalMiddleware"`
 	//api对应的路由配置
-	HTTP *HTTPConfiguration `json:"http,omitempty" toml:"http,omitempty" yaml:"http,omitempty"`
+	EasyServiceRoute *ServiceRouteConfiguration `json:"easyServiceRoute,omitempty" toml:"easyServiceRoute,omitempty" yaml:"easyServiceRoute,omitempty"`
 }
 
 // 代理的负载均衡策略名
@@ -29,18 +29,23 @@ type BalanceMode struct {
 	Balance string `json:"balance,omitempty" toml:"balance,omitempty" yaml:"balance,omitempty"`
 }
 
-// HTTPConfiguration 代理的服务信息
-type HTTPConfiguration struct {
-	//服务名-配置信息
-	Services map[string]*Service `json:"services,omitempty" toml:"services,omitempty" yaml:"services,omitempty" export:"true"`
+// ServiceRouteConfiguration 代理的服务信息
+type ServiceRouteConfiguration struct {
+	//服务名-配置信息,一个服务下面可能有多种比如http或者ws
+	//第一个key是某个上游的服务的名称 比如userSystem,第二个key是对应区分不同协议下的http类型/websocket类型服务定义唯一的名称，比如userSystem_http,userSystem_websocket
+	Services map[string]map[string]*ServiceRoute `json:"services,omitempty" toml:"services,omitempty" yaml:"services,omitempty"`
 }
 
-// Service 服务配置
-type Service struct {
-	//上游得服务名称
-	Service string `json:"service,omitempty" toml:"service,omitempty" yaml:"service,omitempty"`
+// ServiceRoute 服务配置
+type ServiceRoute struct {
+	//上游的服务名称
+	ServiceName string `json:"serviceName,omitempty" toml:"serviceName,omitempty" yaml:"serviceName,omitempty"`
+	//负载均衡策略
+	BalanceMode string `json:"balanceMode" toml:"balanceMode,omitempty" yaml:"balanceMode" `
+	//协议(http,https,websocket,tcp,udp)
+	Handler string `json:"handler" toml:"handler,omitempty" yaml:"handler" `
 	//代理的路由配置信息
-	Routers Router `json:"routers,omitempty" toml:"routers,omitempty" yaml:"routers,omitempty"`
+	Routers []Router `json:"routers,omitempty" toml:"routers,omitempty" yaml:"routers,omitempty"`
 	//代理的目标服务信息
 	Servers []Server `json:"servers,omitempty" toml:"servers,omitempty" yaml:"servers,omitempty"`
 	//对应的中间件
@@ -52,7 +57,7 @@ type Router struct {
 	// api_path 请求的api的url配置
 	Path string `json:"path,omitempty"  toml:"path,omitempty" yaml:"path,omitempty"`
 	// 请求方法(*,GET,POST,DELETE
-	Method string `json:"method,omitempty"  toml:"method,omitempty" yaml:"method,omitempty"`
+	Methods []string `json:"methods,omitempty"  toml:"methods,omitempty" yaml:"methods,omitempty"`
 	// proxy_path 目标代理的api的url配置
 	ProxyPath string `json:"proxyPath,omitempty"  toml:"proxyPath,omitempty" yaml:"proxyPath,omitempty"`
 	// 规则

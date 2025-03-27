@@ -7,6 +7,6 @@ import (
 
 // 请求的协议处理
 type ProtocolHandler interface {
-	Handle(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configuration, routerInfo *dynamic.Service)
+	Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.ServiceRoute)
 	Supports(ctx *fasthttp.RequestCtx) bool
 }

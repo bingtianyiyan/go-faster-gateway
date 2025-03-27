@@ -23,7 +23,7 @@ func NewHTTPHandler(upstreamManager *balancer.UpstreamManager) *HTTPHandler {
 	}
 }
 
-func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configuration, routerInfo *dynamic.Service) {
+func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.ServiceRoute) {
 	if strings.ToLower(string(ctx.Request.Header.Peek("Upgrade"))) == "websocket" {
 		return // WebSocket请求交给WebSocket处理器
 	}
@@ -41,7 +41,7 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configu
 	req.SetBody(ctx.PostBody())
 
 	// 获取负载均衡地址
-	upstreamServer, err := h.upstreamManager.GetLBUpstream(routerInfo.Service, dyConfig)
+	upstreamServer, err := h.upstreamManager.GetLBUpstream(routerInfo.ServiceName, routerInfo)
 	if err != nil {
 		ctx.Error(err.Error(), ecode.InternalServerErrorErr.Code)
 		return
@@ -51,11 +51,13 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configu
 		IsTLS: ctx.IsTLS(),
 	}
 	var proxyPath string
-	if routerInfo.Routers.ProxyPath == "" {
-		proxyPath = string(ctx.Path())
-	} else {
-		proxyPath = routerInfo.Routers.ProxyPath
-	}
+	//TODO match route
+	proxyPath = string(ctx.Path())
+	//if routerInfo.Routers.ProxyPath == "" {
+	//	proxyPath = string(ctx.Path())
+	//} else {
+	//	proxyPath = routerInfo.Routers.ProxyPath
+	//}
 	req.SetRequestURI("http://" + upstreamServer + proxyPath)
 	// 创建一个新的响应
 	resp := fasthttp.AcquireResponse()

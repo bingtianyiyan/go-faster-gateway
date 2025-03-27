@@ -202,12 +202,12 @@ func logConfiguration(configMsg dynamic.Message) {
 }
 
 func isEmptyConfiguration(conf *dynamic.Configuration) bool {
-	if conf.HTTP == nil {
-		conf.HTTP = &dynamic.HTTPConfiguration{
-			Services: make(map[string]*dynamic.Service),
+	if conf.EasyServiceRoute == nil {
+		conf.EasyServiceRoute = &dynamic.ServiceRouteConfiguration{
+			Services: make(map[string]map[string]*dynamic.ServiceRoute),
 		}
 	}
 
-	httpEmpty := conf.HTTP.Services == nil
+	httpEmpty := conf.EasyServiceRoute.Services == nil
 	return httpEmpty
 }

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go-faster-gateway/internal/pkg/data"
 	"go-faster-gateway/pkg/config/dynamic"
 )
@@ -11,23 +12,25 @@ var _ data.IRouteResourceData = (*RouteResourceFileData)(nil)
 
 // RouteResourceFileData 静态文件获取路由数据
 type RouteResourceFileData struct {
-	routeList map[string]*dynamic.Service
+	routeList map[string]map[string]*dynamic.ServiceRoute
 }
 
-func NewRouteResourceFileData(routes map[string]*dynamic.Service) data.IRouteResourceData {
+func NewRouteResourceFileData(routes map[string]map[string]*dynamic.ServiceRoute) data.IRouteResourceData {
 	return &RouteResourceFileData{
 		routeList: routes,
 	}
 }
 
-func (api *RouteResourceFileData) GetAllList(ctx context.Context) ([]*dynamic.Service, error) {
-	if len(api.routeList) == 0 {
+func (api *RouteResourceFileData) GetAllList(ctx context.Context) ([]*dynamic.ServiceRoute, error) {
+	if api.routeList == nil {
 		return nil, errors.New("file with route data is empty")
 	}
-	var list = make([]*dynamic.Service, 0)
+	var list = make([]*dynamic.ServiceRoute, 0)
 	for k, v := range api.routeList {
-		v.Service = k
-		list = append(list, v)
+		for k1, v1 := range v {
+			v1.ServiceName = fmt.Sprintf("%s_%s", k, k1)
+			list = append(list, v1)
+		}
 	}
 	return list, nil
 }

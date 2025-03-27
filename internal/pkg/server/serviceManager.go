@@ -56,7 +56,7 @@ func (f *ServiceManager) BuildFastHttp() *fast.HttpServer {
 		return nil
 	}
 	//httpServer
-	f.fastServer = fast.NewHttpServer(f.configManager.GetStaticConfig(), f.routeManager.Handler)
+	f.fastServer = fast.NewHttpServer(f.configManager.GetStaticConfig(), f.routeManager.HttpHandler)
 	return f.fastServer
 }
 
@@ -70,6 +70,6 @@ func (f *ServiceManager) SwitchFastHttpRouter(conf dynamic.Configuration) {
 		log.Log.WithError(err).Error("SwitchFastHttpRouter CreateRouters fail")
 		return
 	}
-	f.fastServer.SwitchRouter(f.routeManager.Handler)
+	f.fastServer.SwitchRouter(f.routeManager.HttpHandler)
 	log.Log.Info("SwitchFastHttpRouter success")
 }

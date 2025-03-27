@@ -43,10 +43,10 @@ package provider
 //
 //// 静态文件获取路由数据
 //type apiRouteResourceFileRepository struct {
-//	routeList []dynamic.Service
+//	routeList []dynamic.ServiceName
 //}
 //
-//func NewApiRouteResourceFileRepo(routes []dynamic.Service) biz.ApiRouteResourceRepository {
+//func NewApiRouteResourceFileRepo(routes []dynamic.ServiceName) biz.ApiRouteResourceRepository {
 //	return &apiRouteResourceFileRepository{
 //		routeList: routes,
 //	}

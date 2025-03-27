@@ -162,7 +162,7 @@ type IPAllowList struct {
 	// SourceRange defines the set of allowed IPs (or ranges of allowed IPs by using CIDR notation).
 	SourceRange []string    `json:"sourceRange,omitempty" toml:"sourceRange,omitempty" yaml:"sourceRange,omitempty"`
 	IPStrategy  *IPStrategy `json:"ipStrategy,omitempty" toml:"ipStrategy,omitempty" yaml:"ipStrategy,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
-	// RejectStatusCode defines the HTTP status code used for refused requests.
+	// RejectStatusCode defines the EasyServiceRoute status code used for refused requests.
 	// If not set, the default is 403 (Forbidden).
 	RejectStatusCode int `json:"rejectStatusCode,omitempty" toml:"rejectStatusCode,omitempty" yaml:"rejectStatusCode,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 }
@@ -279,7 +279,7 @@ type Headers struct {
 	STSIncludeSubdomains bool `json:"stsIncludeSubdomains,omitempty" toml:"stsIncludeSubdomains,omitempty" yaml:"stsIncludeSubdomains,omitempty" export:"true"`
 	// STSPreload defines whether the preload flag is appended to the Strict-Transport-Security header.
 	STSPreload bool `json:"stsPreload,omitempty" toml:"stsPreload,omitempty" yaml:"stsPreload,omitempty" export:"true"`
-	// ForceSTSHeader defines whether to add the STS header even when the connection is HTTP.
+	// ForceSTSHeader defines whether to add the STS header even when the connection is EasyServiceRoute.
 	ForceSTSHeader bool `json:"forceSTSHeader,omitempty" toml:"forceSTSHeader,omitempty" yaml:"forceSTSHeader,omitempty" export:"true"`
 	// FrameDeny defines whether to add the X-Frame-Options header with the DENY value.
 	FrameDeny bool `json:"frameDeny,omitempty" toml:"frameDeny,omitempty" yaml:"frameDeny,omitempty" export:"true"`
@@ -306,7 +306,7 @@ type Headers struct {
 	// This allows sites to control browser features.
 	PermissionsPolicy string `json:"permissionsPolicy,omitempty" toml:"permissionsPolicy,omitempty" yaml:"permissionsPolicy,omitempty" export:"true"`
 	// IsDevelopment defines whether to mitigate the unwanted effects of the AllowedHosts, SSL, and STS options when developing.
-	// Usually testing takes place using HTTP, not HTTPS, and on localhost, not your production domain.
+	// Usually testing takes place using EasyServiceRoute, not HTTPS, and on localhost, not your production domain.
 	// If you would like your development environment to mimic production with complete Host blocking, SSL redirects,
 	// and STS headers, leave this as false.
 	IsDevelopment bool `json:"isDevelopment,omitempty" toml:"isDevelopment,omitempty" yaml:"isDevelopment,omitempty" export:"true"`
