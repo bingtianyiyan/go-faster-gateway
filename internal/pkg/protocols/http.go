@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+var _ ProtocolHandler = (*HTTPHandler)(nil)
+
 type HTTPHandler struct {
 	upstreamManager *balancer.UpstreamManager
 }

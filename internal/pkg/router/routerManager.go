@@ -42,9 +42,7 @@ func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configur
 	}
 	//middleware
 	f.RegisterMiddleHandlers(conf)
-	// 创建请求处理器
-	objhandler := f.ProtocolManager.GetDefaultHandler()
-	r := NewDyRouter(objhandler.Handle, &conf)
+	r := NewDyRouter(f.ProtocolManager, &conf)
 	r.BuildRouter(routeDataList, f.MiddlewareHandler)
 	f.Router = r
 	handler := r.Router.Handler

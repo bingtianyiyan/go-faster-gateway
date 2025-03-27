@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json"
 	"go-faster-gateway/internal/pkg/middleware"
+	"go-faster-gateway/internal/pkg/protocols"
 	"go-faster-gateway/pkg/config/dynamic"
 	"go-faster-gateway/pkg/helper/md5"
 	"strings"
@@ -47,23 +48,24 @@ func (sr *StaticRouter) Match(key string) *dynamic.Service {
 	return nil
 }
 
-type routerHandler func(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configuration, routerInfo *dynamic.Service)
+//type routerHandler func(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configuration, routerInfo *dynamic.Service)
 
 // DyRouter 动态路由匹配, 将路由规则最终转换成httprouter
 type DyRouter struct {
-	apis     map[string]*dynamic.Service
-	Handler  routerHandler
-	DyConfig *dynamic.Configuration
-	Router   *fasthttprouter.Router
-	Md5      string
-	mu       sync.RWMutex
+	apis map[string]*dynamic.Service
+	//Handler  routerHandler
+	ProtocolFactory *protocols.ProtocolFactory
+	DyConfig        *dynamic.Configuration
+	Router          *fasthttprouter.Router
+	Md5             string
+	mu              sync.RWMutex
 }
 
-func NewDyRouter(handler routerHandler, dyConfig *dynamic.Configuration) *DyRouter {
+func NewDyRouter(protocolFactory *protocols.ProtocolFactory, dyConfig *dynamic.Configuration) *DyRouter {
 	return &DyRouter{
-		apis:     make(map[string]*dynamic.Service),
-		DyConfig: dyConfig,
-		Handler:  handler,
+		apis:            make(map[string]*dynamic.Service),
+		DyConfig:        dyConfig,
+		ProtocolFactory: protocolFactory,
 	}
 }
 
@@ -82,7 +84,9 @@ func (sr *DyRouter) BuildRouter(apis []*dynamic.Service, mwHandler *middleware.M
 			}
 		}
 		h := func(ctx *fasthttp.RequestCtx) {
-			sr.Handler(ctx, sr.DyConfig, temp)
+			handler := sr.ProtocolFactory.GetHandler(ctx)
+			handler.Handle(ctx, sr.DyConfig, temp)
+			//sr.Handler(ctx, sr.DyConfig, temp)
 		}
 		chains := middleware.Chain(h, handlers...)
 		sr.Router.Handle(v.Routers.Method, v.Routers.Path, chains)
