@@ -52,7 +52,7 @@ func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configur
 	//这边只需要把http,https,websocket的
 	r.BuildRouter(filteredRouteDataList, f.MiddlewareHandler)
 	f.Router = r
-	handler := r.Router.Handler
+	handler := r.MainRouter.Handler
 	if len(f.MiddlewareHandler.Handler) > 0 {
 		for i := len(conf.GlobalMiddleware) - 1; i >= 0; i-- {
 			key := strings.ToLower(conf.GlobalMiddleware[i])

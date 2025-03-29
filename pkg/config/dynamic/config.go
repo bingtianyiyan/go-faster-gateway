@@ -41,15 +41,15 @@ type ServiceRoute struct {
 	//上游的服务名称
 	ServiceName string `json:"serviceName,omitempty" toml:"serviceName,omitempty" yaml:"serviceName,omitempty"`
 	//负载均衡策略
-	BalanceMode string `json:"balanceMode" toml:"balanceMode,omitempty" yaml:"balanceMode" `
+	BalanceMode string `json:"balanceMode" toml:"balanceMode,omitempty" yaml:"balanceMode,omitempty" `
 	//协议(http,https,websocket,tcp,udp)
-	Handler string `json:"handler" toml:"handler,omitempty" yaml:"handler" `
-	//代理的路由配置信息
+	Handler string `json:"handler,omitempty" toml:"handler,omitempty" yaml:"handler,omitempty" `
+	//代理的路由配置信息 路由列表
 	Routers []Router `json:"routers,omitempty" toml:"routers,omitempty" yaml:"routers,omitempty"`
 	//代理的目标服务信息
 	Servers []Server `json:"servers,omitempty" toml:"servers,omitempty" yaml:"servers,omitempty"`
 	//对应的中间件
-	Middleware []string `json:"middleware,omitempty" toml:"middleware,omitempty" yaml:"middleware,omitempty"`
+	Middlewares []string `json:"middlewares,omitempty" toml:"middlewares,omitempty" yaml:"middlewares,omitempty"`
 }
 
 // 代理的路由信息
@@ -58,10 +58,20 @@ type Router struct {
 	Path string `json:"path,omitempty"  toml:"path,omitempty" yaml:"path,omitempty"`
 	// 请求方法(*,GET,POST,DELETE
 	Methods []string `json:"methods,omitempty"  toml:"methods,omitempty" yaml:"methods,omitempty"`
+	//路由类型  static/param/wildcard/subrouter
+	Type string `json:"type,omitempty" toml:"type,omitempty" yaml:"type,omitempty"`
+	//路由前缀
+	Prefix string `json:"prefix,omitempty" toml:"prefix,omitempty" yaml:"prefix,omitempty"`
 	// proxy_path 目标代理的api的url配置
 	ProxyPath string `json:"proxyPath,omitempty"  toml:"proxyPath,omitempty" yaml:"proxyPath,omitempty"`
 	// 规则
-	Rule string `json:"rule,omitempty" toml:"rule,omitempty" yaml:"rule,omitempty"`
+	Rule   string            `json:"rule,omitempty" toml:"rule,omitempty" yaml:"rule,omitempty"`
+	Params map[string]string `yaml:"params,omitempty" json:"params"` // 参数约束
+}
+
+// RouteParamConfig 路由参数约束
+type RouteParamConfig struct {
+	Pattern string ` json:"pattern" yaml:"pattern"` // 参数正则约束
 }
 
 // Server 目标服务配置

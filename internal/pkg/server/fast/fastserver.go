@@ -14,9 +14,8 @@ import (
 
 type HttpServer struct {
 	staticConfig *static.Configuration
-	//routeManager *router.RouterManager
-	appServer *fasthttp.Server // 代理服务
-	handler   func(ctx *fasthttp.RequestCtx)
+	appServer    *fasthttp.Server // 代理服务
+	handler      func(ctx *fasthttp.RequestCtx)
 }
 
 func NewHttpServer(staticConfig *static.Configuration,

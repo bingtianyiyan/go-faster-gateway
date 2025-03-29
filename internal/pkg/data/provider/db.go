@@ -34,7 +34,7 @@ package provider
 //			Method:      v.Method,
 //			ServiceName: v.ServiceName,
 //			ProxyPath:   v.ProxyPath,
-//			MiddleWare:  v.Middleware,
+//			MiddleWare:  v.Middlewares,
 //		}
 //		ret = append(ret, temp)
 //	}

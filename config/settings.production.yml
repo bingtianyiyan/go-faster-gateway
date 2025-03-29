@@ -34,15 +34,19 @@ globalMiddleware:
   - Cors
 easyServiceRoute:
   services:
-    myBlogService:
-      myBlogServiceHttp:
-        balanceMode:  wwr
-        handler: http
+    myBlogService: # 程序总的服务名
+      myBlogServiceHttp:  # 路由名称
+        balanceMode:  wwr #负载均衡策略
+        handler: http #路由处理类型
+        middlewares:
         routers:
-          - path: "/api/*filepath"
+          - path: "/*filepath"
             methods: ["POST","DELETE","GET","PUT","OPTIONS"]
-        #             - path: "/api/Account/Login"
-        #               methods: ["POST"]
+            type: wildcard # 路由类型: static/param/wildcard/subrouter
+          - path: "/Account/Login"
+            methods: ["POST"]
+            type: subrouter # 路由类型: static/param/wildcard/subrouter
+            prefix: "/api"  # 子路由前缀
         servers:
           - host: 127.0.0.1
             port: 19002
