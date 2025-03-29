@@ -44,7 +44,7 @@ func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configur
 	}
 	//过滤出是http,https,websocket类型的数据
 	filteredRouteDataList := utils.Filter(routeDataList, func(u *dynamic.ServiceRoute) bool {
-		return u.Handler == constants.Http || u.Handler == constants.Https || u.Handler == constants.WebSocket
+		return u.ProtocolName == constants.Http || u.ProtocolName == constants.Https || u.ProtocolName == constants.WebSocket
 	})
 	//middleware
 	f.RegisterMiddleHandlers(conf)
@@ -70,23 +70,9 @@ func (f *RouterManager) RegisterMiddleHandlers(conf dynamic.Configuration) {
 	var m middleware.MiddlewareHandler
 	m.Handler = make(map[string]middleware.MiddlewareFunc)
 	// 所有的有配置项的中间件，都会配置在middlewares中
-	//for k, v := range s.GetConfig().Middlewares {
-	//	tempConfig := v
-	//	switch {
-	//	case v.IPBlacklist != nil:
-	//		m.HttpHandler[k] = middleware.IpBlacklistMiddleware(&tempConfig, s)
-	//	case v.IPWhitelist != nil:
-	//		m.HttpHandler[k] = middleware.IpWhitelistMiddleware(&tempConfig, s)
-	//	case v.RequestID != nil:
-	//		m.HttpHandler[k] = middleware.RequestIdMiddleware(&tempConfig, s)
-	//	case v.CORS != nil:
-	//		m.HttpHandler[k] = middleware.CorsMiddleware(&tempConfig, s)
-	//	case v.RemoteAuth != nil:
-	//		m.HttpHandler[k] = middleware.RemoteAuthMiddleware(&tempConfig, s)
-	//	case v.TokenLimiter != nil:
-	//		m.HttpHandler[k] = middleware.TokenLimiterMiddleware(&tempConfig, s)
-	//	}
-	//}
+	for _, v := range conf.Middlewares {
+		m.Handler[v] = middleware.LoggingMiddleware
+	}
 	// 没配置的(主要是一些全局的中间件)
 	for _, v := range conf.GlobalMiddleware {
 		v := strings.ToLower(v)

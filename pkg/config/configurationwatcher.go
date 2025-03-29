@@ -204,7 +204,7 @@ func logConfiguration(configMsg dynamic.Message) {
 func isEmptyConfiguration(conf *dynamic.Configuration) bool {
 	if conf.EasyServiceRoute == nil {
 		conf.EasyServiceRoute = &dynamic.ServiceRouteConfiguration{
-			Services: make(map[string]map[string]*dynamic.ServiceRoute),
+			Services: make(map[string]*dynamic.ServiceRoute),
 		}
 	}
 

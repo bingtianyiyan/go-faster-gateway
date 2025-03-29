@@ -41,7 +41,7 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.Servi
 	req.SetBody(ctx.PostBody())
 
 	// 获取负载均衡地址
-	upstreamServer, err := h.upstreamManager.GetLBUpstream(routerInfo.ServiceName, routerInfo)
+	upstreamServer, err := h.upstreamManager.GetLBUpstream(routerInfo.RouteName, routerInfo)
 	if err != nil {
 		ctx.Error(err.Error(), ecode.InternalServerErrorErr.Code)
 		return

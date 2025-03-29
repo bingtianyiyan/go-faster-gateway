@@ -15,12 +15,7 @@ func NewHandlerLoader() *HandlerLoader {
 	}
 
 	// 注册内置处理器
-	loader.Register("api.v1.userList", apiV1UserListHandler)
-	loader.Register("api.v1.userDetail", apiV1UserDetailHandler)
-	loader.Register("static.fileHandler", staticFileHandler)
-	loader.Register("admin.dashboard", adminDashboardHandler)
-	loader.Register("admin.assets", adminAssetsHandler)
-	loader.Register("default.handler", defaultHandler)
+	//loader.Register("api.v1.userList", apiV1UserListHandler)
 
 	return loader
 }
@@ -36,30 +31,7 @@ func (l *HandlerLoader) Load(name string) (fasthttp.RequestHandler, error) {
 	return nil, fmt.Errorf("handler %s not found", name)
 }
 
-// 示例处理器实现
-func apiV1UserListHandler(ctx *fasthttp.RequestCtx) {
-	ctx.WriteString("API v1 User List")
-}
-
-func apiV1UserDetailHandler(ctx *fasthttp.RequestCtx) {
-	id := ctx.UserValue("id").(string)
-	ctx.WriteString("API v1 User Detail: " + id)
-}
-
-func staticFileHandler(ctx *fasthttp.RequestCtx) {
-	filepath := ctx.UserValue("filepath").(string)
-	ctx.WriteString("Static File: " + filepath)
-}
-
-func adminDashboardHandler(ctx *fasthttp.RequestCtx) {
-	ctx.WriteString("Admin Dashboard")
-}
-
-func adminAssetsHandler(ctx *fasthttp.RequestCtx) {
-	assetpath := ctx.UserValue("assetpath").(string)
-	ctx.WriteString("Admin Asset: " + assetpath)
-}
-
-func defaultHandler(ctx *fasthttp.RequestCtx) {
-	ctx.WriteString("Default Handler")
-}
+//// 示例处理器实现
+//func apiV1UserListHandler(ctx *fasthttp.RequestCtx) {
+//	ctx.WriteString("API v1 User List")
+//}

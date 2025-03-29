@@ -7,6 +7,7 @@ import (
 	"go-faster-gateway/internal/pkg/protocols"
 	"go-faster-gateway/pkg/config/dynamic"
 	"go-faster-gateway/pkg/helper/md5"
+	"go-faster-gateway/pkg/helper/utils"
 	"strings"
 	"sync"
 
@@ -38,7 +39,7 @@ func (sr *StaticRouter) BuildRouter(apis []*dynamic.ServiceRoute) {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 	for _, v := range apis {
-		sr.router[v.ServiceName] = v
+		sr.router[v.RouteName] = v
 	}
 }
 
@@ -49,17 +50,21 @@ func (sr *StaticRouter) Match(key string) *dynamic.ServiceRoute {
 	return nil
 }
 
-//type routerHandler func(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configuration, routerInfo *dynamic.ServiceName)
+//type routerHandler func(ctx *fasthttp.RequestCtx, dyConfig *dynamic.Configuration, routerInfo *dynamic.RouteName)
 
 // DyRouter 动态路由匹配, 将路由规则最终转换成httprouter
 type DyRouter struct {
 	apis            map[string]*dynamic.ServiceRoute
 	ProtocolFactory *protocols.ProtocolFactory
 	MainRouter      *fasthttprouter.Router
-	SubRouters      map[string]*fasthttprouter.Router
 	handlerLoader   *HandlerLoader
 	Md5             string
 	mu              sync.RWMutex
+}
+
+type SubRouter struct {
+	ProtocolFactory  *protocols.ProtocolFactory
+	ServiceBaseRoute *dynamic.ServiceRoute
 }
 
 func NewDyRouter(protocolFactory *protocols.ProtocolFactory) *DyRouter {
@@ -67,7 +72,6 @@ func NewDyRouter(protocolFactory *protocols.ProtocolFactory) *DyRouter {
 		apis:            make(map[string]*dynamic.ServiceRoute),
 		ProtocolFactory: protocolFactory,
 		MainRouter:      fasthttprouter.New(),
-		SubRouters:      make(map[string]*fasthttprouter.Router),
 		handlerLoader:   NewHandlerLoader(),
 	}
 }
@@ -76,15 +80,17 @@ func (sr *DyRouter) BuildRouter(apis []*dynamic.ServiceRoute, mwHandler *middlew
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 	//sr.MainRouter = fasthttprouter.New()
+	// 先加载普通路由
 	for _, v := range apis {
-		sr.apis[v.ServiceName] = v
+		sr.apis[v.RouteName] = v
+		for _, v2 := range v.Routers {
+			sr.loadRoute(v, v2, nil, mwHandler)
+		}
 		//temp := v
-		sr.loadRoute(v, nil, mwHandler)
-
 		//// 每个路由对应的中间件不一样
 		//var handlers []middleware.MiddlewareFunc
 		//for _, mw := range v.Middlewares {
-		//	if h, ok := mwHandler.Handler[strings.ToLower(mw)]; ok {
+		//	if h, ok := mwHandler.ProtocolName[strings.ToLower(mw)]; ok {
 		//		handlers = append(handlers, h)
 		//	}
 		//}
@@ -104,78 +110,87 @@ func (sr *DyRouter) BuildRouter(apis []*dynamic.ServiceRoute, mwHandler *middlew
 		//
 		////handler处理
 		////1.静态路由
-		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeStatic, v.Handler)
+		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeStatic, v.ProtocolName)
 		////2.参数路由
-		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeParam, v.Handler)
+		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeParam, v.ProtocolName)
 		////3.通配符路由
-		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeWildcard, v.Handler)
+		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeWildcard, v.ProtocolName)
 
 	}
 	apiJson, _ := json.Marshal(apis)
 	sr.Md5 = md5.MD5(apiJson)
 }
 
-func (sr *DyRouter) loadRoute(routeCfg *dynamic.ServiceRoute, parentRouter *fasthttprouter.Router, mwHandler *middleware.MiddlewareHandler) error {
-	for _, routeInfo := range routeCfg.Routers {
-		currentRouter := sr.MainRouter
-		if parentRouter != nil {
-			currentRouter = parentRouter
-		}
-		//temp := routeCfg
-		switch routeInfo.Type {
-		case "subrouter":
-			sr.loadSubrouter(routeInfo, routeCfg, nil, mwHandler)
+func (sr *DyRouter) loadRoute(serviceBaseRoute *dynamic.ServiceRoute, routeCfg dynamic.Router, parentRouter *fasthttprouter.Router, mwHandler *middleware.MiddlewareHandler) error {
+	//var isRoot = true
+	currentRouter := sr.MainRouter
+	if parentRouter != nil {
+		currentRouter = parentRouter
+		//isRoot = false
+	}
+	switch routeCfg.Type {
+	case constants.Subrouter:
+		sr.loadSubrouter(serviceBaseRoute, routeCfg, mwHandler)
 
-		case "wildcard":
-			sr.loadWildcardRoute(currentRouter, routeInfo, routeCfg, mwHandler)
+	case constants.Wildcard:
+		sr.loadWildcardRoute(currentRouter, serviceBaseRoute, routeCfg, mwHandler)
 
-		default: // 普通路由
-			sr.loadStandardRoute(currentRouter, routeInfo, routeCfg, mwHandler)
-		}
+	default: // 普通路由static/param
+		sr.loadStandardRoute(currentRouter, serviceBaseRoute, routeCfg, mwHandler)
 	}
 
 	return nil
 }
 
 // loadSubrouter 加载子路由
-func (sr *DyRouter) loadSubrouter(routeInfo dynamic.Router, routeCfg *dynamic.ServiceRoute, parentRouter *fasthttprouter.Router, mwHandler *middleware.MiddlewareHandler) error {
-	temp := routeCfg
+func (sr *DyRouter) loadSubrouter(serviceBaseRoute *dynamic.ServiceRoute, routeInfo dynamic.Router, mwHandler *middleware.MiddlewareHandler) error {
 	subRouter := fasthttprouter.New()
-	sr.SubRouters[routeCfg.ServiceName] = subRouter
 
-	// 每个路由对应的中间件不一样
-	var handlers []middleware.MiddlewareFunc
-	for _, mw := range routeCfg.Middlewares {
-		if h, ok := mwHandler.Handler[strings.ToLower(mw)]; ok {
-			handlers = append(handlers, h)
+	subSr := &SubRouter{
+		ProtocolFactory:  sr.ProtocolFactory,
+		ServiceBaseRoute: serviceBaseRoute,
+	}
+	// 获取基础处理器（已适配为 fasthttp.RequestHandler）
+	baseHandler := subSr.AsRequestHandler()
+	//全局中间件，服务内全局中间件，路由局部中间件三者中间件
+	middlewareList := utils.UnionSlicesUnique(serviceBaseRoute.Middlewares, routeInfo.Middlewares)
+	wrappedHandler := sr.applyMiddlewares(baseHandler, mwHandler, middlewareList)
+
+	routeInfo.Path = routeInfo.Prefix + "/*path"
+	sr.registerRoutePattenByMode(sr.MainRouter, routeInfo, wrappedHandler, serviceBaseRoute.ProtocolName)
+	// 其他HTTP方法...
+	// 加载子路由
+	for _, subRoute := range routeInfo.Routers {
+		subRoute.Path = routeInfo.Prefix + subRoute.Path
+		if err := sr.loadRoute(serviceBaseRoute, subRoute, subRouter, mwHandler); err != nil {
+			return err
 		}
 	}
-	h := func(ctx *fasthttp.RequestCtx) {
-		handler := sr.ProtocolFactory.GetHandler(ctx)
-		//具体处理的事件
-		handler.Handle(ctx, temp)
-	}
-	chains := middleware.Chain(h, handlers...)
-
-	// 注册子路由到主路由
-	sr.registerRoutePattenByMode(subRouter, routeInfo, chains, routeCfg.Handler)
-	// 其他HTTP方法...
-	//// 加载子路由
-	//for _, subRoute := range routeCfg.Routes {
-	//	if err := rl.loadRoute(subRoute, subRouter); err != nil {
-	//		return err
-	//	}
-	//}
 
 	return nil
 }
 
+// HandleRequest 是您的自定义处理方法
+func (sr *SubRouter) HandleRequest(ctx *fasthttp.RequestCtx) {
+	handler := sr.ProtocolFactory.GetHandler(ctx)
+	temp := sr.ServiceBaseRoute // 假设这是获取临时数据的方法
+	handler.Handle(ctx, temp)
+}
+
+func (sr *SubRouter) AsRequestHandler() fasthttp.RequestHandler {
+	return func(ctx *fasthttp.RequestCtx) {
+		sr.HandleRequest(ctx)
+	}
+}
+
 // loadWildcardRoute 加载通配符路由
-func (sr *DyRouter) loadWildcardRoute(currentRoute *fasthttprouter.Router, routeInfo dynamic.Router, routeCfg *dynamic.ServiceRoute, mwHandler *middleware.MiddlewareHandler) error {
-	temp := routeCfg
+func (sr *DyRouter) loadWildcardRoute(currentRoute *fasthttprouter.Router, serviceBaseRoute *dynamic.ServiceRoute, routeInfo dynamic.Router, mwHandler *middleware.MiddlewareHandler) error {
+	temp := serviceBaseRoute
+	//全局中间件，服务内全局中间件，路由局部中间件三者中间件
 	// 每个路由对应的中间件不一样
 	var handlers []middleware.MiddlewareFunc
-	for _, mw := range routeCfg.Middlewares {
+	middlewareList := utils.UnionSlicesUnique(serviceBaseRoute.Middlewares, routeInfo.Middlewares)
+	for _, mw := range middlewareList {
 		if h, ok := mwHandler.Handler[strings.ToLower(mw)]; ok {
 			handlers = append(handlers, h)
 		}
@@ -187,20 +202,20 @@ func (sr *DyRouter) loadWildcardRoute(currentRoute *fasthttprouter.Router, route
 	}
 	chains := middleware.Chain(h, handlers...)
 
-	// 注册子路由到主路由
 	// 转换参数路由路径 (如 :id 转换为 :id<regex>)
-	path := sr.convertParamPath(routeInfo)
-	routeInfo.Path = path
-	sr.registerRoutePattenByMode(currentRoute, routeInfo, chains, routeCfg.Handler)
+	routeInfo.Path = sr.convertParamPath(routeInfo)
+	sr.registerRoutePattenByMode(currentRoute, routeInfo, chains, serviceBaseRoute.ProtocolName)
 	return nil
 }
 
 // loadStandardRoute 加载标准路由(静态或参数路由)
-func (sr *DyRouter) loadStandardRoute(currentRoute *fasthttprouter.Router, routeInfo dynamic.Router, routeCfg *dynamic.ServiceRoute, mwHandler *middleware.MiddlewareHandler) error {
-	temp := routeCfg
+func (sr *DyRouter) loadStandardRoute(currentRoute *fasthttprouter.Router, serviceBaseRoute *dynamic.ServiceRoute, routeInfo dynamic.Router, mwHandler *middleware.MiddlewareHandler) error {
+	temp := serviceBaseRoute
+	//全局中间件，服务内全局中间件，路由局部中间件三者中间件
 	// 每个路由对应的中间件不一样
 	var handlers []middleware.MiddlewareFunc
-	for _, mw := range routeCfg.Middlewares {
+	middlewareList := utils.UnionSlicesUnique(serviceBaseRoute.Middlewares, routeInfo.Middlewares)
+	for _, mw := range middlewareList {
 		if h, ok := mwHandler.Handler[strings.ToLower(mw)]; ok {
 			handlers = append(handlers, h)
 		}
@@ -213,8 +228,27 @@ func (sr *DyRouter) loadStandardRoute(currentRoute *fasthttprouter.Router, route
 	chains := middleware.Chain(h, handlers...)
 
 	// 注册子路由到主路由
-	sr.registerRoutePattenByMode(currentRoute, routeInfo, chains, routeCfg.Handler)
+	sr.registerRoutePattenByMode(currentRoute, routeInfo, chains, serviceBaseRoute.ProtocolName)
 	return nil
+}
+
+// applyMiddlewares 应用中间件件链
+// 参数说明:
+// - handler: 基础请求处理器，已经是函数类型不需要指针
+// - mwNames: 要应用的中间件名称列表
+// 返回值: 包装了中间件的新处理器
+func (sr *DyRouter) applyMiddlewares(
+	handler fasthttp.RequestHandler,
+	mwHandler *middleware.MiddlewareHandler,
+	mwNames []string,
+) fasthttp.RequestHandler {
+	// 从后向前应用中间件（最先添加的中间件最后执行）
+	for i := len(mwNames) - 1; i >= 0; i-- {
+		if mw, ok := mwHandler.Handler[strings.ToLower(mwNames[i])]; ok {
+			handler = mw(handler)
+		}
+	}
+	return handler
 }
 
 func (sr *DyRouter) registerRoutePattenByMode(currentRoute *fasthttprouter.Router, route dynamic.Router, chains fasthttp.RequestHandler, webSocketType string) {
@@ -222,13 +256,14 @@ func (sr *DyRouter) registerRoutePattenByMode(currentRoute *fasthttprouter.Route
 	if len(route.Methods) == 0 && webSocketType == constants.WebSocket {
 		currentRoute.GET(route.Path, chains)
 	} else {
+		if len(route.Methods) == 0 {
+			route.Methods = append(route.Methods, "*")
+		}
 		for _, reqMethod := range route.Methods {
-			//// 转换参数路由路径 (如 :id 转换为 :id<regex>)
-			//path := sr.convertParamPath(route)
 			if reqMethod == "*" {
-				sr.registerAllMethods(currentRoute, route.Prefix+route.Path, chains)
+				sr.registerAllMethods(currentRoute, route.Path, chains)
 			} else {
-				currentRoute.Handle(reqMethod, route.Prefix+route.Path, chains)
+				currentRoute.Handle(reqMethod, route.Path, chains)
 			}
 		}
 	}

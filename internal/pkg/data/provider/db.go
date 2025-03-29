@@ -32,7 +32,7 @@ package provider
 //		temp := &biz.ApiRouteResourceDto{
 //			ApiPath:     v.ApiPath,
 //			Method:      v.Method,
-//			ServiceName: v.ServiceName,
+//			RouteName: v.RouteName,
 //			ProxyPath:   v.ProxyPath,
 //			MiddleWare:  v.Middlewares,
 //		}
@@ -43,10 +43,10 @@ package provider
 //
 //// 静态文件获取路由数据
 //type apiRouteResourceFileRepository struct {
-//	routeList []dynamic.ServiceName
+//	routeList []dynamic.RouteName
 //}
 //
-//func NewApiRouteResourceFileRepo(routes []dynamic.ServiceName) biz.ApiRouteResourceRepository {
+//func NewApiRouteResourceFileRepo(routes []dynamic.RouteName) biz.ApiRouteResourceRepository {
 //	return &apiRouteResourceFileRepository{
 //		routeList: routes,
 //	}

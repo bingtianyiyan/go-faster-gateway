@@ -26,40 +26,38 @@ Databases:
   MaxOpenCons: 50
   Source: root:root@tcp(127.0.0.1:3306)/gateway?charset=utf8&parseTime=True&loc=Local&timeout=1000ms
   Registers:
-      - Sources: ["root:root@tcp(127.0.0.1:3306)/gateway?charset=utf8&parseTime=True&loc=Local&timeout=1000ms"]
+    - Sources: ["root:root@tcp(127.0.0.1:3306)/gateway?charset=utf8&parseTime=True&loc=Local&timeout=1000ms"]
 
-balanceMode:
-  balance: wwr
-globalMiddleware:
-  - Cors
+balanceMode: wwr  #全局负载均衡策略
+
+middlewares:  ["loggingmiddleware"]  #所有中间件集合
+globalMiddleware: ["recovery","errorhandler"] #全局中间件
+
 easyServiceRoute:
   services:
     myBlogService: # 程序总的服务名
-        myBlogServiceHttp:  # 路由名称
-           balanceMode:  wwr #负载均衡策略
-           handler: http #路由处理类型
-           middlewares:
-           routers:
-             - path: "/*filepath"
-               methods: ["POST","DELETE","GET","PUT","OPTIONS"]
-               type: wildcard # 路由类型: static/param/wildcard/subrouter
-             - path: "/Account/Login"
-               methods: ["POST"]
-               type: subrouter # 路由类型: static/param/wildcard/subrouter
-               prefix: "/api"  # 子路由前缀
-           servers:
-             - host: 127.0.0.1
-               port: 19002
-               weight: 1
-             - host: 127.0.0.1
-               port: 19002
-               weight: 2
-#         myBlogServiceWebSocket:
-#           serviceName:
-#      routers:
-#        path: "/api/*filepath"
-#        method: "*"
-#        proxyPath:
-#      servers:
-#        - host: 121.196.220.148
-#          port: 19002
+      routeName: blogApi
+      balanceMode:  wwr #负载均衡策略
+      protocolName: http #路由处理类型
+      middlewares:  ["loggingmiddleware"]  #服务内全局路由
+      routers:
+        #        - type: subrouter # 路由类型: static/param/wildcard/subrouter
+        #          methods: [ "*" ]
+        #          prefix: "/api"  # 子路由前缀
+        #          routers:
+        #            - path: "/Account/Login"
+        #              methods: [ "POST" ]
+        #              type: static # 路由类型: static/param/wildcard/subrouter
+        - type: static # 路由类型: static/param/wildcard/subrouter
+          path: "/api/Account/Login"
+          methods: [ "POST" ]
+        - type: static # 路由类型: static/param/wildcard/subrouter
+          path: "/api/ThridParty/GetCardPoolList"
+          methods: [ "POST" ]
+      servers:
+        - host: 127.0.0.1
+          port: 19002
+          weight: 1
+        - host: 127.0.0.1
+          port: 19002
+          weight: 2

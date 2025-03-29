@@ -172,7 +172,7 @@ func sendConfigToChannel(configurationChan chan<- dynamic.Message, configuration
 func (p *Provider) loadFileConfig(filename string) (*dynamic.Configuration, error) {
 	c := &dynamic.Configuration{
 		EasyServiceRoute: &dynamic.ServiceRouteConfiguration{
-			Services: make(map[string]map[string]*dynamic.ServiceRoute),
+			Services: make(map[string]*dynamic.ServiceRoute),
 		},
 	}
 	err := utils.GetFile(filename, c)

@@ -116,7 +116,7 @@ func (r *RouterGroup) AddRoute(path string) {
 //					params[name] = matches[i]
 //				}
 //			}
-//			return route.Handler, params
+//			return route.ProtocolName, params
 //		}
 //	}
 //
@@ -126,7 +126,7 @@ func (r *RouterGroup) AddRoute(path string) {
 //			params := map[string]string{
 //				"*": strings.TrimPrefix(path, strings.TrimSuffix(route.Original, "/*")),
 //			}
-//			return route.Handler, params
+//			return route.ProtocolName, params
 //		}
 //	}
 //
