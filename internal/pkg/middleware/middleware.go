@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"sync"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -17,8 +15,8 @@ func Chain(handler fasthttp.RequestHandler, middlewares ...MiddlewareFunc) fasth
 
 type MiddlewareHandler struct {
 	Handler map[string]MiddlewareFunc
-
-	mu sync.Mutex
+	//
+	//mu sync.Mutex
 }
 
 type IServer interface {

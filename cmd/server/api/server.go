@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-faster-gateway/internal/pkg/balancer"
 	db_init "go-faster-gateway/internal/pkg/componentSetup/database"
+	"go-faster-gateway/internal/pkg/componentSetup/middleware"
 	"go-faster-gateway/internal/pkg/protocols"
 	servers "go-faster-gateway/internal/pkg/server"
 	"go-faster-gateway/pkg/log/logger"
@@ -93,7 +94,11 @@ func run() error {
 		return err
 	}
 
-	routerManager := router.NewRouterManager(upstreamManager, protocolManager)
+	//中间件
+	middlewareManager := middleware.SetUpMiddleware()
+	//路由相关
+	routerManager := router.NewRouterManager(upstreamManager, protocolManager, middlewareManager)
+	//将一些配置和服务对象都放在这里面方便调用
 	serviceManager := servers.NewServiceManager(ctx, configManager, routerManager)
 	serviceManager.InitBuildServer()
 

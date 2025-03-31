@@ -18,27 +18,30 @@ import (
 // RouterManager
 type RouterManager struct {
 	HttpHandler       func(ctx *fasthttp.RequestCtx) // http handler --> 代理主处理器
-	UpstreamsManager  *balancer.UpstreamManager      // 上游服务，一般路由会保存上游服务的名称，转发到对应的上游服务上去，可以使用负载均衡算法
-	ProtocolManager   *protocols.ProtocolFactory
-	MiddlewareHandler *middleware.MiddlewareHandler
-	Router            IRouter                 // 路由相关信息
-	RouteDataProvider data.IRouteResourceData //路由数据
+	upstreamsManager  *balancer.UpstreamManager      // 上游服务，一般路由会保存上游服务的名称，转发到对应的上游服务上去，可以使用负载均衡算法
+	protocolManager   *protocols.ProtocolFactory
+	middlewareHandler *middleware.MiddlewareHandler
+	middlewareManager *middleware.MiddlewareManager
+	router            IRouter                 // 路由相关信息
+	routeDataProvider data.IRouteResourceData //路由数据
 }
 
 func NewRouterManager(upstreamsManager *balancer.UpstreamManager,
-	protocolManager *protocols.ProtocolFactory) *RouterManager {
+	protocolManager *protocols.ProtocolFactory,
+	middlewareManager *middleware.MiddlewareManager) *RouterManager {
 	return &RouterManager{
-		UpstreamsManager: upstreamsManager,
-		ProtocolManager:  protocolManager,
+		upstreamsManager:  upstreamsManager,
+		protocolManager:   protocolManager,
+		middlewareManager: middlewareManager,
 	}
 }
 
 // CreateRouters creates new TCPRouters
 func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configuration) error {
 	// TODO 路由数据源初始化(后期可能http+websocket+tcp 这边需要修改 成配置，抽象
-	f.RouteDataProvider = provider.NewRouteResourceFileData(conf.EasyServiceRoute.Services)
+	f.routeDataProvider = provider.NewRouteResourceFileData(conf.EasyServiceRoute.Services)
 	//routeData
-	routeDataList, err := f.RouteDataProvider.GetAllList(ctx)
+	routeDataList, err := f.routeDataProvider.GetAllList(ctx)
 	if err != nil {
 		return err
 	}
@@ -48,15 +51,15 @@ func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configur
 	})
 	//middleware
 	f.RegisterMiddleHandlers(conf)
-	r := NewDyRouter(f.ProtocolManager)
+	r := NewDyRouter(f.protocolManager)
 	//这边只需要把http,https,websocket的
-	r.BuildRouter(filteredRouteDataList, f.MiddlewareHandler)
-	f.Router = r
+	r.BuildRouter(filteredRouteDataList, f.middlewareHandler)
+	f.router = r
 	handler := r.MainRouter.Handler
-	if len(f.MiddlewareHandler.Handler) > 0 {
+	if len(f.middlewareHandler.Handler) > 0 {
 		for i := len(conf.GlobalMiddleware) - 1; i >= 0; i-- {
 			key := strings.ToLower(conf.GlobalMiddleware[i])
-			fc, ok := f.MiddlewareHandler.Handler[key]
+			fc, ok := f.middlewareHandler.Handler[key]
 			if ok {
 				handler = fc(handler)
 			}
@@ -69,22 +72,26 @@ func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configur
 func (f *RouterManager) RegisterMiddleHandlers(conf dynamic.Configuration) {
 	var m middleware.MiddlewareHandler
 	m.Handler = make(map[string]middleware.MiddlewareFunc)
-	// 所有的有配置项的中间件，都会配置在middlewares中
+	// 所有需要的都会配置在middlewares中
 	for _, v := range conf.Middlewares {
-		m.Handler[v] = middleware.LoggingMiddleware
+		tempHandler, ok := f.middlewareManager.Get(v)
+		if ok {
+			m.Handler[v] = tempHandler
+		}
 	}
-	// 没配置的(主要是一些全局的中间件)
+	// 全局中间件
 	for _, v := range conf.GlobalMiddleware {
-		v := strings.ToLower(v)
+		v1 := strings.ToLower(v)
 		if _, ok := m.Handler[v]; ok {
 			continue
 		}
 		switch {
-		case v == "recovery":
-			m.Handler[v] = middleware.RecoveryMiddleware
-		case v == "errorhandler":
-			m.Handler[v] = middleware.ErrorHandlerMiddleware
+		case v1 == "recoveryhandler" || v1 == "errorhandler":
+			tempHandler, ok := f.middlewareManager.Get(v)
+			if ok {
+				m.Handler[v] = tempHandler
+			}
 		}
 	}
-	f.MiddlewareHandler = &m
+	f.middlewareHandler = &m
 }
