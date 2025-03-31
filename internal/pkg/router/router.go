@@ -163,12 +163,12 @@ func (sr *DyRouter) loadSubrouter(serviceBaseRoute *dynamic.ServiceRoute, routeI
 	}
 	wrappedHandler := middleware.Chain(baseHandler, handlers...)
 
-	routeInfo.Path = routeInfo.Prefix + "/*path"
+	routeInfo.Path = serviceBaseRoute.RouteGroup + routeInfo.Prefix + "/*path"
 	sr.registerRoutePattenByMode(sr.MainRouter, routeInfo, wrappedHandler, serviceBaseRoute.ProtocolName)
 	// 其他HTTP方法...
 	// 加载子路由
 	for _, subRoute := range routeInfo.Routers {
-		subRoute.Path = routeInfo.Prefix + subRoute.Path
+		subRoute.Path = serviceBaseRoute.RouteGroup + routeInfo.Prefix + subRoute.Path
 		if err := sr.loadRoute(serviceBaseRoute, subRoute, subRouter, mwHandler); err != nil {
 			return err
 		}
@@ -212,7 +212,7 @@ func (sr *DyRouter) loadWildcardRoute(currentRoute *fasthttprouter.Router, servi
 	wrappedHandler := middleware.Chain(baseHandler, handlers...)
 
 	// 转换参数路由路径 (如 :id 转换为 :id<regex>)
-	routeInfo.Path = sr.convertParamPath(routeInfo)
+	routeInfo.Path = serviceBaseRoute.RouteGroup + routeInfo.Prefix + sr.convertParamPath(routeInfo)
 	sr.registerRoutePattenByMode(currentRoute, routeInfo, wrappedHandler, serviceBaseRoute.ProtocolName)
 	return nil
 }
@@ -237,7 +237,7 @@ func (sr *DyRouter) loadStandardRoute(currentRoute *fasthttprouter.Router, servi
 		}
 	}
 	wrappedHandler := middleware.Chain(baseHandler, handlers...)
-
+	routeInfo.Path = serviceBaseRoute.RouteGroup + routeInfo.Prefix + routeInfo.Path
 	// 注册子路由到主路由
 	sr.registerRoutePattenByMode(currentRoute, routeInfo, wrappedHandler, serviceBaseRoute.ProtocolName)
 	return nil

@@ -36,6 +36,8 @@ type ServiceRouteConfiguration struct {
 type ServiceRoute struct {
 	//服务总的路由名称
 	RouteName string `json:"routeName,omitempty" toml:"routeName,omitempty" yaml:"routeName,omitempty"`
+	//路由组
+	RouteGroup string `json:"routeGroup,omitempty" toml:"routeGroup,omitempty" yaml:"routeGroup,omitempty"`
 	//负载均衡策略
 	BalanceMode string `json:"balanceMode" toml:"balanceMode,omitempty" yaml:"balanceMode,omitempty" `
 	//协议(http,https,websocket,tcp,udp)

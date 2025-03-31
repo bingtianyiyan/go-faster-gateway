@@ -30,30 +30,31 @@ Databases:
 
 balanceMode: wwr  #全局负载均衡策略
 
-middlewares:  ["loggingmiddleware"]  #所有中间件集合
-globalMiddleware: ["recovery","errorhandler"] #全局中间件
+middlewares:  ["loghandler"]  #所有中间件集合
+globalMiddleware: ["recoveryhandler","errorhandler"] #全局中间件
 
 easyServiceRoute:
   services:
     myBlogService: # 程序总的服务名
       routeName: blogApi
+      routeGroup:  # 路由组
       balanceMode:  wwr #负载均衡策略
       protocolName: http #路由处理类型
-      middlewares:  ["loggingmiddleware"]  #服务内全局路由
+      middlewares:  ["loghandler"]  #服务内全局路由
       routers:
-        #        - type: subrouter # 路由类型: static/param/wildcard/subrouter
-        #          methods: [ "*" ]
-        #          prefix: "/api"  # 子路由前缀
-        #          routers:
-        #            - path: "/Account/Login"
-        #              methods: [ "POST" ]
-        #              type: static # 路由类型: static/param/wildcard/subrouter
-        - type: static # 路由类型: static/param/wildcard/subrouter
-          path: "/api/Account/Login"
-          methods: [ "POST" ]
-        - type: static # 路由类型: static/param/wildcard/subrouter
-          path: "/api/ThridParty/GetCardPoolList"
-          methods: [ "POST" ]
+        - type: subrouter
+          methods: ["*"]
+          prefix: "/api"  # 子路由前缀
+          routers:
+            - path: "/Account/Login"
+              methods: [ "POST" ]
+              type: static
+#        - type: static # 路由类型: static/param/wildcard/subrouter
+#          path: "/api/Account/Login"
+#          methods: [ "POST" ]
+#        - type: static # 路由类型: static/param/wildcard/subrouter
+#          path: "/api/ThridParty/GetCardPoolList"
+#          methods: [ "POST" ]
       servers:
         - host: 127.0.0.1
           port: 19002

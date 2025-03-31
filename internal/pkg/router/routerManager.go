@@ -39,7 +39,7 @@ func NewRouterManager(upstreamsManager *balancer.UpstreamManager,
 // CreateRouters creates new TCPRouters
 func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configuration) error {
 	// TODO 路由数据源初始化(后期可能http+websocket+tcp 这边需要修改 成配置，抽象
-	f.routeDataProvider = provider.NewRouteResourceFileData(conf.EasyServiceRoute.Services)
+	f.routeDataProvider = provider.NewRouteResourceFileData(conf)
 	//routeData
 	routeDataList, err := f.routeDataProvider.GetAllList(ctx)
 	if err != nil {
