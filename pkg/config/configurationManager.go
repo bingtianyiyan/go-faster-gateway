@@ -8,7 +8,9 @@ import (
 	"go-faster-gateway/pkg/helper/env"
 	"go-faster-gateway/pkg/helper/utils"
 	"go-faster-gateway/pkg/log"
+	"go-faster-gateway/pkg/provider"
 	"go-faster-gateway/pkg/provider/aggregator"
+	"go-faster-gateway/pkg/safe"
 	"os"
 	filePathExt "path/filepath"
 	"strings"
@@ -32,8 +34,16 @@ func NewConfigurationManager(filePath string, watchStaticFile bool) *Configurati
 	}
 }
 
-func (f *ConfigurationManager) SetWatch(watch *ConfigurationWatcher) {
-	f.watch = watch
+func (f *ConfigurationManager) InitWatch(routinesPool *safe.Pool, pvd provider.Provider, requiredProvider string) {
+	f.watch = NewConfigurationWatcher(
+		routinesPool,
+		pvd,
+		requiredProvider,
+	)
+}
+
+func (f *ConfigurationManager) AddListener(listener func(dynamic.Configuration)) {
+	f.watch.AddListener(listener)
 }
 
 func (f *ConfigurationManager) GetStaticConfig() *static.Configuration {

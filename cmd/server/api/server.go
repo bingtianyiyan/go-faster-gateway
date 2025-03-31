@@ -71,7 +71,7 @@ func run() error {
 	routinesPool := safe.NewPool(ctx)
 	// TODO 这边可以加入其他文件提供者
 
-	//构建blance和协议
+	//构建balance和协议
 	upstreamManager := balancer.NewUpstreamManager()
 	httpHandler := protocols.NewHTTPHandler(upstreamManager)
 	//TODO websocket
@@ -79,13 +79,8 @@ func run() error {
 		httpHandler,
 	})
 
-	// Watcher
-	watcher := configLoader.NewConfigurationWatcher(
-		routinesPool,
-		providerAggregator,
-		"file",
-	)
-	configManager.SetWatch(watcher)
+	// init watch
+	configManager.InitWatch(routinesPool, providerAggregator, "file")
 
 	//第一次获取动态文件 后面都由watch去更新，这边需要在watch设置完之后获取
 	dyConfig, err := configManager.GetDynamicConfig()
@@ -103,7 +98,7 @@ func run() error {
 	serviceManager.InitBuildServer()
 
 	//add listener
-	watcher.AddListener(switchRouter(serviceManager))
+	configManager.AddListener(switchRouter(serviceManager))
 
 	db_init.SetupDb(dyConfig.Databases)
 
