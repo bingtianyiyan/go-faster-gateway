@@ -81,5 +81,6 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.Servi
 }
 
 func (h *HTTPHandler) Supports(ctx *fasthttp.RequestCtx) bool {
-	return ctx.IsGet() || ctx.IsPost() || ctx.IsDelete() || ctx.IsPut()
+	return (ctx.IsGet() || ctx.IsPost() || ctx.IsDelete() || ctx.IsPut()) &&
+		!(strings.ToLower(string(ctx.Request.Header.Peek("Upgrade"))) == "websocket")
 }

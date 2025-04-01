@@ -23,10 +23,6 @@ func (f *ProtocolFactory) GetHandler(ctx *fasthttp.RequestCtx) ProtocolHandler {
 	return nil // 没有找到支持的协议
 }
 
-func (f *ProtocolFactory) GetDefaultHandler() ProtocolHandler {
-	return f.handlers[0]
-}
-
 //// 初始化协议工厂
 //protocolFactory := factory.NewProtocolFactory()
 //if err := protocolFactory.Init(*certFile, *keyFile); err != nil {

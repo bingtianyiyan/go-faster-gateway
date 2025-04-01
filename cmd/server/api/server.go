@@ -74,9 +74,11 @@ func run() error {
 	//构建balance和协议
 	upstreamManager := balancer.NewUpstreamManager()
 	httpHandler := protocols.NewHTTPHandler(upstreamManager)
+	websocketHandler := protocols.NewWSHandler()
 	//TODO websocket
 	protocolManager := protocols.NewProtocolFactory([]protocols.ProtocolHandler{
 		httpHandler,
+		websocketHandler,
 	})
 
 	// init watch

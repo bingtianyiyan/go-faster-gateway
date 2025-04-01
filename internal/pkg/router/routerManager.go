@@ -102,15 +102,17 @@ func (f *RouterManager) GetRouteList(ctx context.Context, conf dynamic.Configura
 	}
 	var list = make([]*dynamic.ServiceRoute, 0)
 	for k, v := range conf.EasyServiceRoute.Services {
-		v.RouteName = fmt.Sprintf("%s_%s", k, v.RouteName)
-		if len(v.BalanceMode) == 0 {
-			if len(conf.BalanceMode) == 0 {
-				v.BalanceMode = proxy_balancer.WWRBalancer
-			} else {
-				v.BalanceMode = conf.BalanceMode
+		for _, v1 := range v {
+			v1.RouteName = fmt.Sprintf("%s_%s", k, v1.RouteName)
+			if len(v1.BalanceMode) == 0 {
+				if len(conf.BalanceMode) == 0 {
+					v1.BalanceMode = proxy_balancer.WWRBalancer
+				} else {
+					v1.BalanceMode = conf.BalanceMode
+				}
 			}
+			list = append(list, v1)
 		}
-		list = append(list, v)
 	}
 	return list, nil
 }

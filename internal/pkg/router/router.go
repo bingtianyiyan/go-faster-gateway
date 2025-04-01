@@ -171,6 +171,7 @@ func (sr *DyRouter) loadSubrouter(serviceBaseRoute *dynamic.ServiceRoute, routeI
 
 // HandleRequest 是您的自定义处理方法
 func (sr *SubRouter) HandleRequest(ctx *fasthttp.RequestCtx) {
+	//log.Log.Info("print")
 	handler := sr.protocolFactory.GetHandler(ctx)
 	temp := sr.serviceBaseRoute // 假设这是获取临时数据的方法
 	handler.Handle(ctx, temp)
@@ -256,7 +257,7 @@ func (sr *DyRouter) applyMiddlewares(
 
 func (sr *DyRouter) registerRoutePattenByMode(currentRoute *fasthttprouter.Router, route dynamic.Router, chains fasthttp.RequestHandler, webSocketType string) {
 	//websocket 特殊处理
-	if len(route.Methods) == 0 && webSocketType == constants.WebSocket {
+	if webSocketType == constants.WebSocket {
 		currentRoute.GET(route.Path, chains)
 	} else {
 		if len(route.Methods) == 0 {

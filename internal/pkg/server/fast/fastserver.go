@@ -27,6 +27,7 @@ func NewHttpServer(staticConfig *static.Configuration,
 			IdleTimeout:  60 * time.Second,
 			ReadTimeout:  5 * time.Second,
 			WriteTimeout: 5 * time.Second,
+			Handler:      handler,
 		},
 	}
 }

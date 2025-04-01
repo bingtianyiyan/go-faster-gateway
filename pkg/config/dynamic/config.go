@@ -29,7 +29,7 @@ type Configuration struct {
 type ServiceRouteConfiguration struct {
 	//服务名-配置信息,一个服务下面可能有多种比如http或者ws
 	//第一个key是某个上游的服务的名称 比如userSystem
-	Services map[string]*ServiceRoute `json:"services,omitempty" toml:"services,omitempty" yaml:"services,omitempty"`
+	Services map[string][]*ServiceRoute `json:"services,omitempty" toml:"services,omitempty" yaml:"services,omitempty"`
 }
 
 // ServiceRoute 服务配置
