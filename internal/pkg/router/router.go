@@ -79,27 +79,12 @@ func NewDyRouter(protocolFactory *protocols.ProtocolFactory) *DyRouter {
 func (sr *DyRouter) BuildRouter(apis []*dynamic.ServiceRoute, mwHandler *middleware.MiddlewareHandler) {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
-	//sr.MainRouter = fasthttprouter.New()
 	// 先加载普通路由
 	for _, v := range apis {
 		sr.apis[v.RouteName] = v
 		for _, v2 := range v.Routers {
 			sr.loadRoute(v, v2, nil, mwHandler)
 		}
-		//temp := v
-		//// 每个路由对应的中间件不一样
-		//var handlers []middleware.MiddlewareFunc
-		//for _, mw := range v.Middlewares {
-		//	if h, ok := mwHandler.ProtocolName[strings.ToLower(mw)]; ok {
-		//		handlers = append(handlers, h)
-		//	}
-		//}
-		//h := func(ctx *fasthttp.RequestCtx) {
-		//	handler := sr.protocolFactory.GetHandler(ctx)
-		//	//具体处理的事件
-		//	handler.Handle(ctx, temp)
-		//}
-		//chains := middleware.Chain(h, handlers...)
 		////1. 静态API路由优先  /api/Account/Login
 		////2. 参数路径次之 /static/:param
 		////3. 最后定义全局通配符最后 /*path
@@ -107,14 +92,6 @@ func (sr *DyRouter) BuildRouter(apis []*dynamic.ServiceRoute, mwHandler *middlew
 		////精确路径匹配（完全匹配）
 		////正则表达式路由匹配
 		////通配符路由（兜底）
-		//
-		////handler处理
-		////1.静态路由
-		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeStatic, v.ProtocolName)
-		////2.参数路由
-		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeParam, v.ProtocolName)
-		////3.通配符路由
-		//sr.registerRoutePattenMode(v.Routers, chains, RouteTypeWildcard, v.ProtocolName)
 
 	}
 	apiJson, _ := json.Marshal(apis)
@@ -125,6 +102,21 @@ func (sr *DyRouter) loadRoute(serviceBaseRoute *dynamic.ServiceRoute, routeCfg d
 	currentRouter := sr.MainRouter
 	if parentRouter != nil {
 		currentRouter = parentRouter
+	}
+	//校验 routeCfg.Type 如果未设置则根据正则检测是哪种类型
+	if len(routeCfg.Routers) > 0 && len(routeCfg.Type) == 0 {
+		routeCfg.Type = constants.Subrouter
+	} else if len(routeCfg.Type) == 0 {
+		routePatern := ParseRoute(routeCfg.Path)
+		if routePatern.Type == RouteTypeWildcard {
+			routeCfg.Type = constants.Wildcard
+		} else if routePatern.Type == RouteTypeParam {
+			routeCfg.Type = constants.Param
+		} else if routePatern.Type == RouteTypeStatic {
+			routeCfg.Type = constants.Static
+		} else {
+			routeCfg.Type = constants.Subrouter
+		}
 	}
 	switch routeCfg.Type {
 	case constants.Subrouter:

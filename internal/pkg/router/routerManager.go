@@ -2,14 +2,15 @@ package router
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"go-faster-gateway/internal/pkg/balancer"
 	"go-faster-gateway/internal/pkg/constants"
-	"go-faster-gateway/internal/pkg/data"
-	"go-faster-gateway/internal/pkg/data/provider"
 	"go-faster-gateway/internal/pkg/middleware"
 	"go-faster-gateway/internal/pkg/protocols"
 	"go-faster-gateway/pkg/config/dynamic"
 	"go-faster-gateway/pkg/helper/utils"
+	proxy_balancer "go-faster-gateway/pkg/poxyResource/balancer"
 	"strings"
 
 	"github.com/valyala/fasthttp"
@@ -22,8 +23,8 @@ type RouterManager struct {
 	protocolManager   *protocols.ProtocolFactory
 	middlewareHandler *middleware.MiddlewareHandler
 	middlewareManager *middleware.MiddlewareManager
-	router            IRouter                 // 路由相关信息
-	routeDataProvider data.IRouteResourceData //路由数据
+	router            IRouter // 路由相关信息
+	//routeDataProvider data.IRouteResourceData //路由数据
 }
 
 func NewRouterManager(upstreamsManager *balancer.UpstreamManager,
@@ -39,9 +40,8 @@ func NewRouterManager(upstreamsManager *balancer.UpstreamManager,
 // CreateRouters creates new TCPRouters
 func (f *RouterManager) CreateRouters(ctx context.Context, conf dynamic.Configuration) error {
 	// TODO 路由数据源初始化(后期可能http+websocket+tcp 这边需要修改 成配置，抽象
-	f.routeDataProvider = provider.NewRouteResourceFileData(conf)
 	//routeData
-	routeDataList, err := f.routeDataProvider.GetAllList(ctx)
+	routeDataList, err := f.GetRouteList(ctx, conf)
 	if err != nil {
 		return err
 	}
@@ -94,4 +94,23 @@ func (f *RouterManager) RegisterMiddleHandlers(conf dynamic.Configuration) {
 		}
 	}
 	f.middlewareHandler = &m
+}
+
+func (f *RouterManager) GetRouteList(ctx context.Context, conf dynamic.Configuration) ([]*dynamic.ServiceRoute, error) {
+	if conf.EasyServiceRoute.Services == nil {
+		return nil, errors.New("file with route data is empty")
+	}
+	var list = make([]*dynamic.ServiceRoute, 0)
+	for k, v := range conf.EasyServiceRoute.Services {
+		v.RouteName = fmt.Sprintf("%s_%s", k, v.RouteName)
+		if len(v.BalanceMode) == 0 {
+			if len(conf.BalanceMode) == 0 {
+				v.BalanceMode = proxy_balancer.WWRBalancer
+			} else {
+				v.BalanceMode = conf.BalanceMode
+			}
+		}
+		list = append(list, v)
+	}
+	return list, nil
 }
