@@ -32,12 +32,11 @@ var upgrader = websocket.FastHTTPUpgrader{
 type Client struct {
 	conn       *websocket.Conn
 	send       chan []byte
-	LastPing   time.Time
-	BackendURL string // 对应的后端服务地址
+	lastPing   time.Time
+	backendURL string // 对应的后端服务地址
 }
 
 type WSHandler struct {
-	//clients map[*websocket.Conn]*Client
 	upstreamManager *balancer.UpstreamManager
 	lockMap         sync.Map
 	// 保护后端转发连接的锁
@@ -46,7 +45,6 @@ type WSHandler struct {
 
 func NewWSHandler(upstreamManager *balancer.UpstreamManager) *WSHandler {
 	return &WSHandler{
-		//clients: make(map[*websocket.Conn]*Client),
 		upstreamManager: upstreamManager,
 	}
 }
@@ -99,7 +97,7 @@ func (h *WSHandler) Supports(ctx *fasthttp.RequestCtx) bool {
 func (h *WSHandler) processMessage(client *Client, msgType int, msg []byte) {
 	// 更新心跳时间
 	if msgType == websocket.PingMessage {
-		client.LastPing = time.Now()
+		client.lastPing = time.Now()
 		h.lockMap.LoadOrStore(client.conn, client)
 		return
 	}
@@ -127,7 +125,7 @@ func (h *WSHandler) ForwardToBackend(client *Client, message []byte) {
 	defer h.backendLock.Unlock()
 
 	// 1. 建立到后端服务的WebSocket连接
-	backendConn, _, err := websocket.DefaultDialer.Dial(client.BackendURL, nil)
+	backendConn, _, err := websocket.DefaultDialer.Dial(client.backendURL, nil)
 	if err != nil {
 		log.Log.Infof("Failed to connect to backend: %v", err)
 		return
@@ -155,14 +153,14 @@ func (h *WSHandler) ForwardToBackend(client *Client, message []byte) {
 
 // 心跳检测（自动清理断连客户端）
 func (h *WSHandler) checkHeartbeat() {
-	ticker := time.NewTicker(300 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		now := time.Now()
 		h.lockMap.Range(func(key, value any) bool {
 			client := value.(*Client)
-			if now.Sub(client.LastPing) > 300*time.Second {
+			if now.Sub(client.lastPing) > 300*time.Second {
 				log.Log.Infof("Client %s heartbeat timeout", client.conn.RemoteAddr())
 				client.conn.Close() // 关闭失效连接
 				h.RemoveClient(client.conn)
@@ -185,8 +183,8 @@ func (h *WSHandler) AddClient(ctx *fasthttp.RequestCtx, conn *websocket.Conn, se
 	backendURL := fmt.Sprintf("%s%s", upstreamServer, serviceRoute.RouteGroup+routeInfo.Prefix+routeInfo.Path)
 	client := &Client{
 		conn:       conn,
-		LastPing:   time.Now(),
-		BackendURL: backendURL,
+		lastPing:   time.Now(),
+		backendURL: backendURL,
 	}
 	h.lockMap.Store(conn, client)
 	return client, err
