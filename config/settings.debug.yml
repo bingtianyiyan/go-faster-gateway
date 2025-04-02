@@ -67,7 +67,7 @@ easyServiceRoute:
         routers:
           - path: "/ws"
         servers:
-          - host: wss://127.0.0.1
+          - host: ws://127.0.0.1
             port: 12000
             weight: 1
 

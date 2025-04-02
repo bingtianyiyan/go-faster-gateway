@@ -51,14 +51,14 @@ func NewWSHandler(upstreamManager *balancer.UpstreamManager) *WSHandler {
 	}
 }
 
-func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.ServiceRoute) {
+func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.ServiceRoute, routeInfo dynamic.Router) {
 	// 中间件在WebSocket升级前执行
 	err := upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
 		defer conn.Close()
 
 		// 创建客户端对象
 		// 注册到全局缓存
-		client, err := h.AddClient(ctx, conn, routerInfo)
+		client, err := h.AddClient(ctx, conn, serviceRoute, routeInfo)
 		if err != nil {
 			log.Log.WithError(err).Error("addClient fail")
 			return
@@ -100,12 +100,14 @@ func (h *WSHandler) processMessage(client *Client, msgType int, msg []byte) {
 	// 更新心跳时间
 	if msgType == websocket.PingMessage {
 		client.LastPing = time.Now()
+		h.lockMap.LoadOrStore(client.conn, client)
 		return
 	}
 
 	// 业务逻辑（示例：广播消息）
-	log.Log.Infof("Received from %s %s", client.conn.RemoteAddr(), msg)
-	h.broadcastMessage(msg)
+	log.Log.Debugf("Received from %s %s", client.conn.RemoteAddr(), msg)
+	//h.broadcastMessage(msg)
+	h.ForwardToBackend(client, msg)
 }
 
 // 广播消息给所有客户端
@@ -172,15 +174,15 @@ func (h *WSHandler) checkHeartbeat() {
 }
 
 // 添加客户端
-func (h *WSHandler) AddClient(ctx *fasthttp.RequestCtx, conn *websocket.Conn, routerInfo *dynamic.ServiceRoute) (*Client, error) {
+func (h *WSHandler) AddClient(ctx *fasthttp.RequestCtx, conn *websocket.Conn, serviceRoute *dynamic.ServiceRoute, routeInfo dynamic.Router) (*Client, error) {
 	// 获取负载均衡地址
-	upstreamServer, err := h.upstreamManager.GetLBUpstream(routerInfo.RouteName, routerInfo)
+	upstreamServer, err := h.upstreamManager.GetLBUpstream(serviceRoute.RouteName, serviceRoute)
 	if err != nil {
 		ctx.Error(err.Error(), ecode.InternalServerErrorErr.Code)
 		return nil, err
 	}
 	//这边先默认只配置一个websocket的/ws地址
-	backendURL := fmt.Sprintf("%s%s", upstreamServer, routerInfo.Routers[0].Path)
+	backendURL := fmt.Sprintf("%s%s", upstreamServer, serviceRoute.RouteGroup+routeInfo.Prefix+routeInfo.Path)
 	client := &Client{
 		conn:       conn,
 		LastPing:   time.Now(),

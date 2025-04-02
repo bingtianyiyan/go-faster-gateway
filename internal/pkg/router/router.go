@@ -65,6 +65,7 @@ type DyRouter struct {
 type SubRouter struct {
 	protocolFactory  *protocols.ProtocolFactory
 	serviceBaseRoute *dynamic.ServiceRoute
+	routeInfo        dynamic.Router
 }
 
 func NewDyRouter(protocolFactory *protocols.ProtocolFactory) *DyRouter {
@@ -139,6 +140,7 @@ func (sr *DyRouter) loadSubrouter(serviceBaseRoute *dynamic.ServiceRoute, routeI
 	subSr := &SubRouter{
 		protocolFactory:  sr.protocolFactory,
 		serviceBaseRoute: serviceBaseRoute,
+		routeInfo:        routeInfo,
 	}
 	// 获取基础处理器（已适配为 fasthttp.RequestHandler）
 	baseHandler := subSr.AsRequestHandler()
@@ -171,10 +173,9 @@ func (sr *DyRouter) loadSubrouter(serviceBaseRoute *dynamic.ServiceRoute, routeI
 
 // HandleRequest 是您的自定义处理方法
 func (sr *SubRouter) HandleRequest(ctx *fasthttp.RequestCtx) {
-	//log.Log.Info("print")
 	handler := sr.protocolFactory.GetHandler(ctx)
-	temp := sr.serviceBaseRoute // 假设这是获取临时数据的方法
-	handler.Handle(ctx, temp)
+	temp := sr.serviceBaseRoute
+	handler.Handle(ctx, temp, sr.routeInfo)
 }
 
 func (sr *SubRouter) AsRequestHandler() fasthttp.RequestHandler {
@@ -188,6 +189,7 @@ func (sr *DyRouter) loadWildcardRoute(currentRoute *fasthttprouter.Router, servi
 	subSr := &SubRouter{
 		protocolFactory:  sr.protocolFactory,
 		serviceBaseRoute: serviceBaseRoute,
+		routeInfo:        routeInfo,
 	}
 	// 获取基础处理器（已适配为 fasthttp.RequestHandler）
 	baseHandler := subSr.AsRequestHandler()
@@ -215,6 +217,7 @@ func (sr *DyRouter) loadStandardRoute(currentRoute *fasthttprouter.Router, servi
 	subSr := &SubRouter{
 		protocolFactory:  sr.protocolFactory,
 		serviceBaseRoute: serviceBaseRoute,
+		routeInfo:        routeInfo,
 	}
 	// 获取基础处理器（已适配为 fasthttp.RequestHandler）
 	baseHandler := subSr.AsRequestHandler()

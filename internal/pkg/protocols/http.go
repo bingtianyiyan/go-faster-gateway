@@ -23,7 +23,7 @@ func NewHTTPHandler(upstreamManager *balancer.UpstreamManager) *HTTPHandler {
 	}
 }
 
-func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.ServiceRoute) {
+func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.ServiceRoute, routeInfo dynamic.Router) {
 	if strings.ToLower(string(ctx.Request.Header.Peek("Upgrade"))) == "websocket" {
 		return // WebSocket请求交给WebSocket处理器
 	}
@@ -41,7 +41,7 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.Servi
 	req.SetBody(ctx.PostBody())
 
 	// 获取负载均衡地址
-	upstreamServer, err := h.upstreamManager.GetLBUpstream(routerInfo.RouteName, routerInfo)
+	upstreamServer, err := h.upstreamManager.GetLBUpstream(serviceRoute.RouteName, serviceRoute)
 	if err != nil {
 		ctx.Error(err.Error(), ecode.InternalServerErrorErr.Code)
 		return
