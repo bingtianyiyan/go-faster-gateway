@@ -1,11 +1,15 @@
 package protocols
 
 import (
+	"fmt"
 	"github.com/fasthttp/websocket"
 	"github.com/valyala/fasthttp"
+	"go-faster-gateway/internal/pkg/balancer"
+	"go-faster-gateway/internal/pkg/ecode"
 	"go-faster-gateway/pkg/config/dynamic"
 	"go-faster-gateway/pkg/log"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,25 +30,24 @@ var upgrader = websocket.FastHTTPUpgrader{
 }
 
 type Client struct {
-	conn     *websocket.Conn
-	send     chan []byte
-	userID   string
-	LastPing time.Time
+	conn       *websocket.Conn
+	send       chan []byte
+	LastPing   time.Time
+	BackendURL string // 对应的后端服务地址
 }
-
-//// 使用 haxmap 实现客户端管理
-//var (
-//	clients = haxmap.New[string, *Client]() // key: UserID, value: *Client
-//	mutex   sync.RWMutex
-//)
 
 type WSHandler struct {
-	clients map[*websocket.Conn]*Client
+	//clients map[*websocket.Conn]*Client
+	upstreamManager *balancer.UpstreamManager
+	lockMap         sync.Map
+	// 保护后端转发连接的锁
+	backendLock sync.Mutex
 }
 
-func NewWSHandler() *WSHandler {
+func NewWSHandler(upstreamManager *balancer.UpstreamManager) *WSHandler {
 	return &WSHandler{
-		clients: make(map[*websocket.Conn]*Client),
+		//clients: make(map[*websocket.Conn]*Client),
+		upstreamManager: upstreamManager,
 	}
 }
 
@@ -53,31 +56,21 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, routerInfo *dynamic.Service
 	err := upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
 		defer conn.Close()
 
-		// 从请求中获取用户ID（示例用Header，实际可改用JWT等）
-		userID := string(ctx.Request.Header.Peek("X-User-ID"))
-		if userID == "" {
-			//mock
-			userID = "123"
-			//ctx.Error("Unauthorized", fasthttp.StatusUnauthorized)
-			//return
-		}
 		// 创建客户端对象
-		client := &Client{
-			conn:     conn,
-			userID:   userID,
-			LastPing: time.Now(),
-		}
-
 		// 注册到全局缓存
-		h.clients[conn] = client
-		defer delete(h.clients, conn) // 断开时自动注销
+		client, err := h.AddClient(ctx, conn, routerInfo)
+		if err != nil {
+			log.Log.WithError(err).Error("addClient fail")
+			return
+		}
+		defer h.RemoveClient(conn)
 
 		// 消息处理循环
 		for {
 			msgType, msg, err := conn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
-					log.Log.Infof("Client %s disconnected abnormally: %v", client.userID, err)
+					log.Log.Infof("Client %s disconnected abnormally: %v", client.conn.RemoteAddr(), err)
 				}
 				break
 			}
@@ -111,24 +104,50 @@ func (h *WSHandler) processMessage(client *Client, msgType int, msg []byte) {
 	}
 
 	// 业务逻辑（示例：广播消息）
-	log.Log.Infof("Received from %s: %s", client.userID, msg)
+	log.Log.Infof("Received from %s %s", client.conn.RemoteAddr(), msg)
 	h.broadcastMessage(msg)
 }
 
 // 广播消息给所有客户端
 func (h *WSHandler) broadcastMessage(msg []byte) {
-	//clients.Range(func(key, value interface{}) bool {
-	//	client := value.(*Client)
-	//	if err := client.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-	//		log.Log.Infof("Failed to send to %s: %v", client.userID, err)
-	//	}
-	//	return true
-	//})
-
-	for k, _ := range h.clients {
-		if err := k.WriteMessage(websocket.TextMessage, msg); err != nil {
-			log.Log.Infof("Failed to send to %s: %v", k.RemoteAddr(), err)
+	h.lockMap.Range(func(key, value any) bool {
+		client := value.(*Client)
+		if err := client.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Log.Infof("Failed to send to %s: %v", client.conn.RemoteAddr(), err)
 		}
+		return true
+	})
+}
+
+// 转发消息到后端服务
+func (h *WSHandler) ForwardToBackend(client *Client, message []byte) {
+	h.backendLock.Lock()
+	defer h.backendLock.Unlock()
+
+	// 1. 建立到后端服务的WebSocket连接
+	backendConn, _, err := websocket.DefaultDialer.Dial(client.BackendURL, nil)
+	if err != nil {
+		log.Log.Infof("Failed to connect to backend: %v", err)
+		return
+	}
+	defer backendConn.Close()
+
+	// 2. 转发消息
+	if err := backendConn.WriteMessage(websocket.TextMessage, message); err != nil {
+		log.Log.WithError(err).Error("Backend write error")
+		return
+	}
+
+	// 3. 接收后端响应（可选）
+	_, resp, err := backendConn.ReadMessage()
+	if err != nil {
+		log.Log.WithError(err).Error("Backend read error")
+		return
+	}
+
+	// 4. 将响应返回给客户端
+	if err := client.conn.WriteMessage(websocket.TextMessage, resp); err != nil {
+		log.Log.WithError(err).Error("Client write error:")
 	}
 }
 
@@ -138,14 +157,49 @@ func (h *WSHandler) checkHeartbeat() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		for k, v := range h.clients {
-			if time.Since(v.LastPing) > 60*time.Second {
-				log.Log.Infof("Client %s heartbeat timeout", v.conn.RemoteAddr())
-				//client.conn.Close(websocket.CloseGoingAway, "No heartbeat")
-				k.Close()
-				delete(h.clients, k)
+		now := time.Now()
+		h.lockMap.Range(func(key, value any) bool {
+			client := value.(*Client)
+			if now.Sub(client.LastPing) > 300*time.Second {
+				log.Log.Infof("Client %s heartbeat timeout", client.conn.RemoteAddr())
+				client.conn.Close() // 关闭失效连接
+				h.RemoveClient(client.conn)
 			}
-		}
+			return true
+		})
 
 	}
+}
+
+// 添加客户端
+func (h *WSHandler) AddClient(ctx *fasthttp.RequestCtx, conn *websocket.Conn, routerInfo *dynamic.ServiceRoute) (*Client, error) {
+	// 获取负载均衡地址
+	upstreamServer, err := h.upstreamManager.GetLBUpstream(routerInfo.RouteName, routerInfo)
+	if err != nil {
+		ctx.Error(err.Error(), ecode.InternalServerErrorErr.Code)
+		return nil, err
+	}
+	//这边先默认只配置一个websocket的/ws地址
+	backendURL := fmt.Sprintf("%s%s", upstreamServer, routerInfo.Routers[0].Path)
+	client := &Client{
+		conn:       conn,
+		LastPing:   time.Now(),
+		BackendURL: backendURL,
+	}
+	h.lockMap.Store(conn, client)
+	return client, err
+}
+
+// 删除客户端
+func (h *WSHandler) RemoveClient(conn *websocket.Conn) {
+	h.lockMap.Delete(conn)
+}
+
+// 获取客户端
+func (h *WSHandler) GetClient(conn *websocket.Conn) (*Client, bool) {
+	data, ok := h.lockMap.Load(conn)
+	if ok {
+		return data.(*Client), ok
+	}
+	return nil, ok
 }

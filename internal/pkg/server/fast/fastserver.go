@@ -24,10 +24,13 @@ func NewHttpServer(staticConfig *static.Configuration,
 		staticConfig: staticConfig,
 		handler:      handler,
 		appServer: &fasthttp.Server{
-			IdleTimeout:  60 * time.Second,
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 5 * time.Second,
-			Handler:      handler,
+			IdleTimeout:     60 * time.Second,
+			ReadTimeout:     5 * time.Second,
+			WriteTimeout:    5 * time.Second,
+			Concurrency:     10000, // 提高并发连接数
+			ReadBufferSize:  4096,  // 减少内存分配
+			WriteBufferSize: 4096,
+			Handler:         handler,
 		},
 	}
 }
