@@ -38,7 +38,12 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Ser
 
 	// 复制客户端请求的数据
 	ctx.Request.CopyTo(req)
-	req.SetBody(ctx.PostBody())
+	// 2. 流式转发原始请求体
+	if ctx.Request.IsBodyStream() {
+		req.SetBodyStream(ctx.Request.BodyStream(), ctx.Request.Header.ContentLength())
+	} else {
+		req.SetBody(ctx.Request.Body())
+	}
 
 	// 获取负载均衡地址
 	upstreamServer, err := h.upstreamManager.GetLBUpstream(serviceRoute.RouteName, serviceRoute)
@@ -77,10 +82,15 @@ func (h *HTTPHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Ser
 	// 将目标服务器的响应返回给客户端
 	// 将目标服务器的响应头部和主体复制到当前请求对象中
 	resp.Header.CopyTo(&ctx.Response.Header)
-	ctx.Response.SetBody(resp.Body())
+	if ctx.Request.IsBodyStream() {
+		ctx.SetBodyStream(resp.BodyStream(), resp.Header.ContentLength())
+	} else {
+		ctx.Response.SetBody(resp.Body())
+	}
 }
 
 func (h *HTTPHandler) Supports(ctx *fasthttp.RequestCtx) bool {
-	return (ctx.IsGet() || ctx.IsPost() || ctx.IsDelete() || ctx.IsPut() || ctx.IsOptions() || ctx.IsHead() || ctx.IsTrace()) &&
-		!(strings.ToLower(string(ctx.Request.Header.Peek("Upgrade"))) == "websocket")
+	return !(strings.ToLower(string(ctx.Request.Header.Peek("Upgrade"))) == "websocket") &&
+		(ctx.IsGet() || ctx.IsPost() || ctx.IsDelete() || ctx.IsPut() || ctx.IsOptions() || ctx.IsHead() || ctx.IsTrace())
+
 }

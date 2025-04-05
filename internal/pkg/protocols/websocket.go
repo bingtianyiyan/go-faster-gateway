@@ -26,7 +26,7 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 1024 * 1024 * 8 * 5 //5g
+	maxMessageSize = 1024 * 1024 * 8 //1g
 )
 
 var upgrader = websocket.FastHTTPUpgrader{
@@ -61,8 +61,8 @@ type ClientMsg struct {
 type WSHandler struct {
 	upstreamManager *balancer.UpstreamManager
 	msgCenter       *MessageCenter
-	counter         int
-	mu              sync.Mutex // 声明互斥锁
+	once            sync.Once
+	once_heart      sync.Once
 }
 
 func NewWSHandler(upstreamManager *balancer.UpstreamManager) *WSHandler {
@@ -73,11 +73,9 @@ func NewWSHandler(upstreamManager *balancer.UpstreamManager) *WSHandler {
 }
 
 func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.ServiceRoute, routeInfo dynamic.Router) {
-	h.mu.Lock()         // 加锁
-	defer h.mu.Unlock() // 确保解锁(即使发生panic)
-	if h.counter == 0 {
+	h.once.Do(func() {
 		go h.msgCenter.run()
-	}
+	})
 
 	// 中间件在WebSocket升级前执行
 	err := upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
@@ -90,7 +88,11 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Servi
 			return
 		}
 		//这边先默认只配置一个websocket的/ws地址
-		backendURL := fmt.Sprintf("%s%s", upstreamServer, serviceRoute.RouteGroup+routeInfo.Prefix+routeInfo.Path)
+		path := routeInfo.ProxyPath
+		if len(path) == 0 {
+			path = routeInfo.Path
+		}
+		backendURL := fmt.Sprintf("%s%s", upstreamServer, serviceRoute.RouteGroup+routeInfo.Prefix+path)
 		client := &Client{hub: h.msgCenter, conn: conn, send: make(chan []byte, 256), backendURL: backendURL, lastPing: time.Now()}
 		client.hub.register <- client
 		//收到消息处理
@@ -102,12 +104,9 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Servi
 	if err != nil {
 		ctx.Error("WebSocket upgrade failed", fasthttp.StatusBadRequest)
 	}
-
-	// 启动心跳检测协程
-	if h.counter == 0 {
+	h.once_heart.Do(func() {
 		go h.checkHeartbeat()
-	}
-	h.counter++
+	})
 }
 
 func (h *WSHandler) Supports(ctx *fasthttp.RequestCtx) bool {
