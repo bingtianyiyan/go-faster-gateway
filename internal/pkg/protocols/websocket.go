@@ -29,6 +29,12 @@ const (
 	maxMessageSize = 10 << 20 // 10MB
 )
 
+var (
+	//客户端->后端
+	clientToBack = 1
+	backToClient = 2
+)
+
 var upgrader = websocket.FastHTTPUpgrader{
 	HandshakeTimeout: 5 * time.Second, // 快速握手
 	ReadBufferSize:   1024,
@@ -67,7 +73,15 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Servi
 
 	// 中间件在WebSocket升级前执行
 	err := upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
-		defer conn.Close()
+		var backendConn *websocket.Conn
+		defer func() {
+			if conn != nil {
+				defer conn.Close()
+			}
+			if backendConn != nil {
+				defer backendConn.Close()
+			}
+		}()
 
 		// 获取负载均衡地址
 		upstreamServer, err := h.upstreamManager.GetLBUpstream(serviceRoute.RouteName, serviceRoute)
@@ -81,7 +95,6 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Servi
 			path = routeInfo.Path
 		}
 
-		var backendConn = conn
 		backendURL := fmt.Sprintf("%s%s", upstreamServer, serviceRoute.RouteGroup+routeInfo.Prefix+path)
 
 		//环境变量判断
@@ -93,17 +106,19 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Servi
 				log.Log.Infof("Failed to connect to backend: %v", err)
 				return
 			}
-			defer backendConn.Close()
+		} else {
+			backendConn = conn
 		}
 
 		sessionClient := &SessionClient{
-			conn:     conn,
-			backConn: backendConn,
-			lastPing: time.Now(),
+			sessionHub: h.sessionCenter,
+			conn:       conn,
+			backConn:   backendConn,
+			lastPing:   time.Now(),
 		}
 		h.sessionCenter.register <- sessionClient
-
-		err = sessionClient.proxyWS()
+		go sessionClient.writePump()
+		err = h.proxyWS(sessionClient)
 		if err != nil {
 			ctx.Error(err.Error(), ecode.InternalServerErrorErr.Code)
 			return
@@ -113,9 +128,9 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Servi
 	if err != nil {
 		ctx.Error("WebSocket upgrade failed", fasthttp.StatusBadRequest)
 	}
-	//h.once_heart.Do(func() {
-	//	go h.checkHeartbeat()
-	//})
+	h.once_heart.Do(func() {
+		go h.checkHeartbeat()
+	})
 }
 
 func (h *WSHandler) Supports(ctx *fasthttp.RequestCtx) bool {
@@ -127,19 +142,19 @@ func (h *WSHandler) Supports(ctx *fasthttp.RequestCtx) bool {
 
 // 心跳检测（自动清理断连客户端）
 func (h *WSHandler) checkHeartbeat() {
-	//ticker := time.NewTicker(60 * time.Second)
-	//defer ticker.Stop()
-	//
-	//for range ticker.C {
-	//	now := time.Now()
-	//	for client, _ := range h.sessionCenter.clients {
-	//		if now.Sub(client.lastPing) > 300*time.Second {
-	//			log.Log.Infof("Client %s heartbeat timeout", client.conn.RemoteAddr())
-	//			h.msgCenter.unregister <- client
-	//		}
-	//	}
-	//
-	//}
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now()
+		for _, client := range h.sessionCenter.clients {
+			if now.Sub(client.lastPing) > 300*time.Second {
+				log.Log.Infof("Client %s heartbeat timeout", client.conn.RemoteAddr())
+				h.sessionCenter.unregister <- client
+			}
+		}
+
+	}
 }
 
 var bufPool = sync.Pool{
@@ -148,15 +163,15 @@ var bufPool = sync.Pool{
 	},
 }
 
-func (s *SessionClient) proxyWS() error {
+func (h *WSHandler) proxyWS(sessionClient *SessionClient) error {
 	errChan := make(chan error, 2)
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	// 客户端->后端
-	go s.pipeMessages(errChan, &wg)
+	go sessionClient.pipeMessages(errChan, &wg, clientToBack)
 	// 后端->客户端
-	go s.pipeMessages(errChan, &wg)
+	go sessionClient.pipeMessages(errChan, &wg, backToClient)
 
 	wg.Wait()
 	select {
@@ -167,18 +182,44 @@ func (s *SessionClient) proxyWS() error {
 	}
 }
 
-func (s *SessionClient) pipeMessages(errChan chan<- error, wg *sync.WaitGroup) {
+func (c *SessionClient) pipeMessages(errChan chan<- error, wg *sync.WaitGroup, sourceType int) {
+	defer func() {
+		if sourceType == clientToBack {
+			c.sessionHub.unregister <- c
+		}
+		if c.conn != c.backConn {
+			c.backConn.Close()
+		}
+		c.conn.Close()
+	}()
 	defer wg.Done()
 	buf := bufPool.Get().([]byte)
 	defer bufPool.Put(buf)
-
+	var src, dest *websocket.Conn
+	if sourceType == clientToBack {
+		src = c.conn
+		dest = c.backConn
+	} else {
+		src = c.backConn
+		dest = c.conn
+	}
+	src.SetReadLimit(maxMessageSize)
+	src.SetReadDeadline(time.Now().Add(pongWait))
+	src.SetPongHandler(func(string) error { src.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		msgType, msg, err := s.conn.ReadMessage()
+		msgType, msg, err := src.ReadMessage()
 		if err != nil {
 			if !isNormalClose(err) {
 				errChan <- err
 			}
 			return
+		}
+		//如果是自身服务ping的消息则不需要往下再发送回去
+		if msgType == websocket.PingMessage {
+			if sourceType == clientToBack {
+				c.sessionHub.updateClientHeart <- src
+			}
+			continue
 		}
 
 		// 动态扩容
@@ -189,9 +230,26 @@ func (s *SessionClient) pipeMessages(errChan chan<- error, wg *sync.WaitGroup) {
 		}
 		copy(buf, msg)
 
-		if err = s.backConn.WriteMessage(msgType, buf); err != nil {
+		if err = dest.WriteMessage(msgType, buf); err != nil {
 			errChan <- err
 			return
+		}
+	}
+}
+
+func (c *SessionClient) writePump() {
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+	for {
+		select {
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -212,19 +270,24 @@ type SessionCenter struct {
 
 	// 注销客户端
 	unregister chan *SessionClient
+
+	//更新客户端心跳
+	updateClientHeart chan *websocket.Conn
 }
 
 type SessionClient struct {
-	conn     *websocket.Conn
-	backConn *websocket.Conn
-	lastPing time.Time
+	sessionHub *SessionCenter
+	conn       *websocket.Conn
+	backConn   *websocket.Conn
+	lastPing   time.Time
 }
 
 func newSessionCenter() *SessionCenter {
 	return &SessionCenter{
-		register:   make(chan *SessionClient),
-		unregister: make(chan *SessionClient),
-		clients:    make(map[*websocket.Conn]*SessionClient),
+		register:          make(chan *SessionClient),
+		unregister:        make(chan *SessionClient),
+		clients:           make(map[*websocket.Conn]*SessionClient),
+		updateClientHeart: make(chan *websocket.Conn),
 	}
 }
 
@@ -233,10 +296,17 @@ func (h *SessionCenter) run() {
 		select {
 		case client := <-h.register:
 			h.clients[client.conn] = client
+			log.Log.Infof("register count %s", len(h.clients))
 		case client := <-h.unregister:
 			if _, ok := h.clients[client.conn]; ok {
 				log.Log.Infof("unregister client:%s", client.conn.RemoteAddr())
 				delete(h.clients, client.conn)
+			}
+		case clientConn := <-h.updateClientHeart:
+			if client, ok := h.clients[clientConn]; ok {
+				log.Log.Infof("update client:%s", clientConn.RemoteAddr())
+				client.lastPing = time.Now()
+				h.clients[clientConn] = client
 			}
 		}
 	}
