@@ -26,7 +26,7 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 1024 * 1024 * 8 //1g
+	maxMessageSize = 10 << 20 // 10MB
 )
 
 var upgrader = websocket.FastHTTPUpgrader{
@@ -45,22 +45,9 @@ var upgrader = websocket.FastHTTPUpgrader{
 	}, // 允许所
 }
 
-type Client struct {
-	hub        *MessageCenter
-	conn       *websocket.Conn
-	send       chan []byte
-	lastPing   time.Time
-	backendURL string // 对应的后端服务地址
-}
-
-type ClientMsg struct {
-	msg    []byte
-	client *Client
-}
-
 type WSHandler struct {
 	upstreamManager *balancer.UpstreamManager
-	msgCenter       *MessageCenter
+	sessionCenter   *SessionCenter
 	once            sync.Once
 	once_heart      sync.Once
 }
@@ -68,13 +55,14 @@ type WSHandler struct {
 func NewWSHandler(upstreamManager *balancer.UpstreamManager) *WSHandler {
 	return &WSHandler{
 		upstreamManager: upstreamManager,
-		msgCenter:       newMessageCenter(),
+		sessionCenter:   newSessionCenter(),
 	}
 }
 
+// 直接使用fasthttp websocket
 func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.ServiceRoute, routeInfo dynamic.Router) {
 	h.once.Do(func() {
-		go h.msgCenter.run()
+		go h.sessionCenter.run()
 	})
 
 	// 中间件在WebSocket升级前执行
@@ -92,21 +80,42 @@ func (h *WSHandler) Handle(ctx *fasthttp.RequestCtx, serviceRoute *dynamic.Servi
 		if len(path) == 0 {
 			path = routeInfo.Path
 		}
+
+		var backendConn = conn
 		backendURL := fmt.Sprintf("%s%s", upstreamServer, serviceRoute.RouteGroup+routeInfo.Prefix+path)
-		client := &Client{hub: h.msgCenter, conn: conn, send: make(chan []byte, 256), backendURL: backendURL, lastPing: time.Now()}
-		client.hub.register <- client
-		//收到消息处理
-		go client.writePump()
-		//读取websocket消息转发到消息中心
-		client.readPump()
+
+		//环境变量判断
+		envDefaultName := env.ModeDebug.String()
+		envName := os.Getenv("EnvName")
+		if envDefaultName != envName {
+			backendConn, _, err = websocket.DefaultDialer.Dial(backendURL, nil)
+			if err != nil {
+				log.Log.Infof("Failed to connect to backend: %v", err)
+				return
+			}
+			defer backendConn.Close()
+		}
+
+		sessionClient := &SessionClient{
+			conn:     conn,
+			backConn: backendConn,
+			lastPing: time.Now(),
+		}
+		h.sessionCenter.register <- sessionClient
+
+		err = sessionClient.proxyWS()
+		if err != nil {
+			ctx.Error(err.Error(), ecode.InternalServerErrorErr.Code)
+			return
+		}
 	})
 
 	if err != nil {
 		ctx.Error("WebSocket upgrade failed", fasthttp.StatusBadRequest)
 	}
-	h.once_heart.Do(func() {
-		go h.checkHeartbeat()
-	})
+	//h.once_heart.Do(func() {
+	//	go h.checkHeartbeat()
+	//})
 }
 
 func (h *WSHandler) Supports(ctx *fasthttp.RequestCtx) bool {
@@ -118,168 +127,285 @@ func (h *WSHandler) Supports(ctx *fasthttp.RequestCtx) bool {
 
 // 心跳检测（自动清理断连客户端）
 func (h *WSHandler) checkHeartbeat() {
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
+	//ticker := time.NewTicker(60 * time.Second)
+	//defer ticker.Stop()
+	//
+	//for range ticker.C {
+	//	now := time.Now()
+	//	for client, _ := range h.sessionCenter.clients {
+	//		if now.Sub(client.lastPing) > 300*time.Second {
+	//			log.Log.Infof("Client %s heartbeat timeout", client.conn.RemoteAddr())
+	//			h.msgCenter.unregister <- client
+	//		}
+	//	}
+	//
+	//}
+}
 
-	for range ticker.C {
-		now := time.Now()
-		for client, _ := range h.msgCenter.clients {
-			if now.Sub(client.lastPing) > 300*time.Second {
-				log.Log.Infof("Client %s heartbeat timeout", client.conn.RemoteAddr())
-				h.msgCenter.unregister <- client
-			}
-		}
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 32*1024) // 32KB缓冲
+	},
+}
 
+func (s *SessionClient) proxyWS() error {
+	errChan := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// 客户端->后端
+	go s.pipeMessages(errChan, &wg)
+	// 后端->客户端
+	go s.pipeMessages(errChan, &wg)
+
+	wg.Wait()
+	select {
+	case err := <-errChan:
+		return err
+	default:
+		return nil
 	}
 }
 
-// readPump pumps messages from the websocket connection to the msgCenter
-func (c *Client) readPump() {
-	defer func() {
-		c.hub.unregister <- c
-		c.conn.Close()
-	}()
-	c.conn.SetReadLimit(maxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+func (s *SessionClient) pipeMessages(errChan chan<- error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	buf := bufPool.Get().([]byte)
+	defer bufPool.Put(buf)
+
 	for {
-		msgType, message, err := c.conn.ReadMessage()
+		msgType, msg, err := s.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Log.WithError(err).Error("c.conn.ReadMessage fail")
+			if !isNormalClose(err) {
+				errChan <- err
 			}
-			break
-		}
-
-		go c.processMessage(msgType, message)
-	}
-}
-
-// writePump pumps messages from the msgCenter to the websocket connection.
-func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-		c.conn.Close()
-	}()
-	for {
-		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				// The hub closed the channel.
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-			//转发到后端服务处理
-			go c.ForwardToBackend(message)
-
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
-			}
-		}
-	}
-}
-
-// 异步消息处理
-func (s *Client) processMessage(msgType int, msg []byte) {
-	// 更新心跳时间
-	if msgType == websocket.PingMessage {
-		s.lastPing = time.Now()
-		s.hub.clients[s] = true
-		return
-	}
-
-	// 业务逻辑（示例：广播消息）
-	log.Log.Debugf("Received from %s %s", s.conn.RemoteAddr(), msg)
-	msg2 := &ClientMsg{
-		msg:    msg,
-		client: s,
-	}
-	s.hub.singlebroadcast <- msg2
-}
-
-// 转发消息到后端服务
-func (s *Client) ForwardToBackend(message []byte) {
-	//环境变量判断
-	envDefaultName := env.ModeDebug.String()
-	envName := os.Getenv("EnvName")
-	//测试启动
-	if envName == envDefaultName {
-		msg := "server replay" + string(message)
-		if err := s.conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
-			log.Log.WithError(err).Error("Client write error:")
-		}
-		log.Log.Debug("replay msg to client")
-		return
-	} else {
-		// 1. 建立到后端服务的WebSocket连接
-		backendConn, _, err := websocket.DefaultDialer.Dial(s.backendURL, nil)
-		if err != nil {
-			log.Log.Infof("Failed to connect to backend: %v", err)
-			return
-		}
-		defer backendConn.Close()
-
-		// 2. 转发消息
-		if err := backendConn.WriteMessage(websocket.TextMessage, message); err != nil {
-			log.Log.WithError(err).Error("Backend write error")
 			return
 		}
 
-		// 3. 接收后端响应（可选）
-		_, resp, err := backendConn.ReadMessage()
-		if err != nil {
-			log.Log.WithError(err).Error("Backend read error")
-			return
+		// 动态扩容
+		if len(msg) > cap(buf) {
+			buf = make([]byte, len(msg))
+		} else {
+			buf = buf[:len(msg)]
 		}
+		copy(buf, msg)
 
-		// 4. 将响应返回给客户端
-		if err := s.conn.WriteMessage(websocket.TextMessage, resp); err != nil {
-			log.Log.WithError(err).Error("Client write error:")
+		if err = s.backConn.WriteMessage(msgType, buf); err != nil {
+			errChan <- err
+			return
 		}
 	}
 }
 
-// 消息中心
-type MessageCenter struct {
-	clients map[*Client]bool
+func isNormalClose(err error) bool {
+	return websocket.IsCloseError(err,
+		websocket.CloseNormalClosure,
+		websocket.CloseGoingAway,
+		websocket.CloseNoStatusReceived)
+}
 
-	//单播消息
-	singlebroadcast chan *ClientMsg
+// 会话中心
+type SessionCenter struct {
+	clients map[*websocket.Conn]*SessionClient
 
 	// 注册客户端
-	register chan *Client
+	register chan *SessionClient
 
 	// 注销客户端
-	unregister chan *Client
+	unregister chan *SessionClient
 }
 
-func newMessageCenter() *MessageCenter {
-	return &MessageCenter{
-		singlebroadcast: make(chan *ClientMsg),
-		register:        make(chan *Client),
-		unregister:      make(chan *Client),
-		clients:         make(map[*Client]bool),
+type SessionClient struct {
+	conn     *websocket.Conn
+	backConn *websocket.Conn
+	lastPing time.Time
+}
+
+func newSessionCenter() *SessionCenter {
+	return &SessionCenter{
+		register:   make(chan *SessionClient),
+		unregister: make(chan *SessionClient),
+		clients:    make(map[*websocket.Conn]*SessionClient),
 	}
 }
 
-func (h *MessageCenter) run() {
+func (h *SessionCenter) run() {
 	for {
 		select {
 		case client := <-h.register:
-			h.clients[client] = true
+			h.clients[client.conn] = client
 		case client := <-h.unregister:
-			if _, ok := h.clients[client]; ok {
+			if _, ok := h.clients[client.conn]; ok {
 				log.Log.Infof("unregister client:%s", client.conn.RemoteAddr())
-				delete(h.clients, client)
-				close(client.send)
+				delete(h.clients, client.conn)
 			}
-		case singleMsg := <-h.singlebroadcast: // 消息单播
-			singleMsg.client.send <- singleMsg.msg //转发到后端
-
 		}
 	}
 }
+
+////////////////////////// 以msgCenter模式处理消息
+
+//type Client struct {
+//	hub        *MessageCenter
+//	conn       *websocket.Conn
+//	backConn   *websocket.Conn
+//	send       chan SendMsg
+//	lastPing   time.Time
+//}
+//
+//type SendMsg struct {
+//	msgType int
+//	msg     []byte
+//}
+//
+//type ClientMsg struct {
+//	msgType int
+//	msg     []byte
+//	client  *Client
+//}
+//
+//
+//// readPump pumps messages from the websocket connection to the msgCenter
+//func (c *Client) readPump() {
+//	defer func() {
+//		c.hub.unregister <- c
+//		c.conn.Close()
+//	}()
+//	c.conn.SetReadLimit(maxMessageSize)
+//	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+//	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+//	for {
+//		msgType, message, err := c.conn.ReadMessage()
+//		if err != nil {
+//			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+//				log.Log.WithError(err).Error("c.conn.ReadMessage fail")
+//			}
+//			break
+//		}
+//
+//		go c.processMessage(msgType, message)
+//	}
+//}
+//
+//// writePump pumps messages from the msgCenter to the websocket connection.
+//func (c *Client) writePump() {
+//	ticker := time.NewTicker(pingPeriod)
+//	defer func() {
+//		ticker.Stop()
+//		c.conn.Close()
+//	}()
+//	for {
+//		select {
+//		case message, ok := <-c.send:
+//			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+//			if !ok {
+//				// The hub closed the channel.
+//				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+//				return
+//			}
+//			//转发到后端服务处理
+//			go c.ForwardToBackend(message)
+//
+//		case <-ticker.C:
+//			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+//			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+//				return
+//			}
+//		}
+//	}
+//}
+//
+//// 异步消息处理
+//func (s *Client) processMessage(msgType int, msg []byte) {
+//	// 更新心跳时间
+//	if msgType == websocket.PingMessage {
+//		s.lastPing = time.Now()
+//		s.hub.clients[s] = true
+//		return
+//	}
+//
+//	// 业务逻辑（示例：广播消息）
+//	log.Log.Debugf("Received from %s %s", s.conn.RemoteAddr(), msg)
+//	msg2 := &ClientMsg{
+//		msgType: msgType,
+//		msg:     msg,
+//		client:  s,
+//	}
+//	s.hub.singlebroadcast <- msg2
+//}
+//
+//// 转发消息到后端服务
+//func (s *Client) ForwardToBackend(message SendMsg) {
+//	//环境变量判断
+//	envDefaultName := env.ModeDebug.String()
+//	envName := os.Getenv("EnvName")
+//	//测试启动
+//	if envName == envDefaultName {
+//		msg := "server replay" + string(message.msg)
+//		if err := s.conn.WriteMessage(message.msgType, []byte(msg)); err != nil {
+//			log.Log.WithError(err).Error("Client write error:")
+//		}
+//		log.Log.Debug("replay msg to client")
+//		return
+//	} else {
+//		//转发消息到后端
+//		if err := s.backConn.WriteMessage(message.msgType, message.msg); err != nil {
+//			log.Log.WithError(err).Error("Backend write error")
+//			return
+//		}
+//		// 3. 接收后端响应（可选）
+//		_, resp, err := s.backConn.ReadMessage()
+//		if err != nil {
+//			log.Log.WithError(err).Error("Backend read error")
+//			return
+//		}
+//
+//		// 4. 将响应返回给客户端
+//		if err := s.conn.WriteMessage(message.msgType, resp); err != nil {
+//			log.Log.WithError(err).Error("Client write error:")
+//		}
+//	}
+//}
+//
+//// 消息中心
+//type MessageCenter struct {
+//	clients map[*Client]bool
+//
+//	//单播消息
+//	singlebroadcast chan *ClientMsg
+//
+//	// 注册客户端
+//	register chan *Client
+//
+//	// 注销客户端
+//	unregister chan *Client
+//}
+//
+//func newMessageCenter() *MessageCenter {
+//	return &MessageCenter{
+//		singlebroadcast: make(chan *ClientMsg),
+//		register:        make(chan *Client),
+//		unregister:      make(chan *Client),
+//		clients:         make(map[*Client]bool),
+//	}
+//}
+//
+//func (h *MessageCenter) run() {
+//	for {
+//		select {
+//		case client := <-h.register:
+//			h.clients[client] = true
+//		case client := <-h.unregister:
+//			if _, ok := h.clients[client]; ok {
+//				log.Log.Infof("unregister client:%s", client.conn.RemoteAddr())
+//				delete(h.clients, client)
+//				close(client.send)
+//			}
+//		case singleMsg := <-h.singlebroadcast: // 消息单播
+//			singleMsg.client.send <- SendMsg{
+//				msgType: singleMsg.msgType,
+//				msg:     singleMsg.msg,
+//			} //转发到后端
+//
+//		}
+//	}
+//}
